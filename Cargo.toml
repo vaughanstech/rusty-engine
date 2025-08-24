@@ -1,0 +1,11 @@
+[package]
+name = "app-rusty-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit = "0.29"
+env_logger = "*"
+log = "*"
+wgpu = "*"
+pollster = "*"
