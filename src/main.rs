@@ -1,3 +1,4 @@
+use wgpu::util::DeviceExt;
 // Import crates
 use winit::{
     application::ApplicationHandler, dpi::PhysicalSize, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowAttributes}
@@ -5,6 +6,36 @@ use winit::{
 use std::{sync::Arc};
 // pollster lets us block on async setup code (wgpu uses async APIs)
 use pollster::{FutureExt};
+
+// Create a struct to hold the vertices of a triangle
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    position: [f32; 2], // x, y coordinates
+}
+
+impl Vertex {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                // Position attribute
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0, // matches shader @location(0)
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex {position: [0.0, 0.5]}, // top
+    Vertex {position: [-0.5, -0.5]}, // bottom left
+    Vertex {position: [0.5, -0.5]}, // bottom right
+];
 
 // We'll create a struct to manage our GPU state
 pub struct State {
@@ -15,6 +46,8 @@ pub struct State {
     size: winit::dpi::PhysicalSize<u32>,
     is_surface_configured: bool,
     window: Arc<Window>,
+    vertex_buffer: wgpu::Buffer,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
@@ -71,6 +104,53 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        // 7. Load shaders from file
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+
+        // 8. Define pipeline layout (no uniforms yet, so empty)
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Pipeline Layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        });
+
+        // 9. Create render pipeline
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",  // vertex shader function
+                buffers: &[Vertex::desc()],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main", // fragment shader function
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        // 10. Create vertex buffer from vertices
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
         Self {
             surface,
             device,
@@ -79,6 +159,8 @@ impl State {
             size,
             is_surface_configured: false,
             window: window,
+            vertex_buffer,
+            render_pipeline
         }
     }
 
@@ -131,7 +213,7 @@ impl State {
 
         {
             // 4. Begin render pass (define clear color + attachments)
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -151,6 +233,9 @@ impl State {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.draw(0..VERTICES.len() as u32, 0..1);
             // Render pass dropped here, finishing recording
         }
 
