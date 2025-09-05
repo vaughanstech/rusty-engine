@@ -1,4 +1,4 @@
-use wgpu::util::DeviceExt;
+use wgpu::util::DeviceExt; // for create_buffer_init
 // Import crates
 use winit::{
     application::ApplicationHandler, dpi::PhysicalSize, event::*, event_loop::{ActiveEventLoop, EventLoop}, keyboard::{KeyCode, PhysicalKey}, window::{Window, WindowAttributes}
@@ -12,6 +12,7 @@ use pollster::{FutureExt};
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     position: [f32; 2], // x, y coordinates
+    color: [f32; 3], // RGB color
 }
 
 impl Vertex {
@@ -26,16 +27,70 @@ impl Vertex {
                     shader_location: 0, // matches shader @location(0)
                     format: wgpu::VertexFormat::Float32x2,
                 },
+                // Color
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
             ],
         }
     }
 }
 
-const VERTICES: &[Vertex] = &[
-    Vertex {position: [0.0, 0.5]}, // top
-    Vertex {position: [-0.5, -0.5]}, // bottom left
-    Vertex {position: [0.5, -0.5]}, // bottom right
+const TRIANGLE_VERTICES: &[Vertex] = &[
+    Vertex {position: [0.0, 0.5], color: [1.0, 0.0, 0.0]}, // top
+    Vertex {position: [-0.5, -0.5], color: [1.0, 0.0, 0.0]}, // bottom left
+    Vertex {position: [0.5, -0.5], color: [1.0, 0.0, 0.0]}, // bottom right
 ];
+
+const SQUARE_VERTICES: &[Vertex] = &[
+    Vertex {position: [-0.25, 0.25], color: [0.0, 1.0, 0.0]}, // top left
+    Vertex {position: [0.25, 0.25], color: [0.0, 1.0, 0.0]}, // top right
+    Vertex {position: [0.25, -0.25], color: [0.0, 0.0, 1.0]}, // bottom right
+    Vertex {position: [-0.25, -0.25], color: [0.0, 0.0, 1.0]}, // bottom left
+];
+
+// Indices define which vertices make up triangles
+const SQUARE_INDICES: &[u16] = &[
+    0, 1, 2, // first triangle
+    0, 2, 3, // second triangle
+];
+
+fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vertex>, Vec<u16>) {
+    // Imagine a pizza: one vertex at the center, then a ring of vertices around the edge
+    // Each slice (center + two edge points) is one triangle
+    // Put enough slices together -> looks like a circle
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    // Center vertex
+    vertices.push(Vertex {
+        position: [0.0, 0.0],
+        color,
+    });
+
+    // Create edge vertices around the circle
+    for i in 0..=segments {
+        let theta = (i as f32 / segments as f32) * std::f32::consts::TAU; // TAU = 2pi
+        let x = radius * theta.cos();
+        let y = radius * theta.sin();
+
+        vertices.push(Vertex {
+            position: [x,y],
+            color,
+        });
+
+        // Add indices to form triangles (skip first edge)
+        if i > 0 {
+            indices.push(0); // center
+            indices.push(i as u16);
+            indices.push((i as u16) + 1);
+        }
+    }
+
+    (vertices, indices)
+}
 
 // We'll create a struct to manage our GPU state
 pub struct State {
@@ -46,7 +101,13 @@ pub struct State {
     size: winit::dpi::PhysicalSize<u32>,
     is_surface_configured: bool,
     window: Arc<Window>,
-    vertex_buffer: wgpu::Buffer,
+    triangle_vertex_buffer: wgpu::Buffer,
+    square_vertex_buffer: wgpu::Buffer,
+    square_index_buffer: wgpu::Buffer,
+    square_num_indices: u32,
+    circle_vertex_buffer: wgpu::Buffer,
+    circle_index_buffer: wgpu::Buffer,
+    circle_num_indices: u32,
     render_pipeline: wgpu::RenderPipeline,
 }
 
@@ -145,11 +206,35 @@ impl State {
         });
 
         // 10. Create vertex buffer from vertices
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+        let triangle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Triangle Vertex Buffer"),
+            contents: bytemuck::cast_slice(TRIANGLE_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
+        let square_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Square Vertex Buffer"),
+            contents: bytemuck::cast_slice(SQUARE_VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let square_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Square Index Buffer"),
+            contents: bytemuck::cast_slice(SQUARE_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let square_num_indices = SQUARE_INDICES.len() as u32;
+
+        let (circle_vertices, circle_indices) = create_circle(0.4, 64, [0.0, 0.0, 1.0]);
+        let circle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Circle Vertex Buffer"),
+            contents: bytemuck::cast_slice(&circle_vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let circle_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Circle Index BUffer"),
+            contents: bytemuck::cast_slice(&circle_indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let circle_num_indices = circle_indices.len() as u32;
 
         Self {
             surface,
@@ -159,7 +244,13 @@ impl State {
             size,
             is_surface_configured: false,
             window: window,
-            vertex_buffer,
+            triangle_vertex_buffer,
+            square_vertex_buffer,
+            square_index_buffer,
+            square_num_indices,
+            circle_vertex_buffer,
+            circle_index_buffer,
+            circle_num_indices,
             render_pipeline
         }
     }
@@ -234,8 +325,20 @@ impl State {
                 timestamp_writes: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..VERTICES.len() as u32, 0..1);
+            
+            // Draw triangle
+            render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
+            render_pass.draw(0..TRIANGLE_VERTICES.len() as u32, 0..1);
+
+            // Draw square
+            render_pass.set_vertex_buffer(0, self.square_vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.square_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.square_num_indices, 0, 0..1);
+
+            // Draw Circle
+            render_pass.set_vertex_buffer(0, self.circle_vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.circle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.circle_num_indices, 0, 0..1);
             // Render pass dropped here, finishing recording
         }
 
