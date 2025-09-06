@@ -57,6 +57,20 @@ const SQUARE_INDICES: &[u16] = &[
     0, 2, 3, // second triangle
 ];
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Uniforms {
+    transform: [[f32; 4]; 4],
+}
+
+impl Uniforms {
+    fn new() -> Self {
+        Self {
+            transform: glam::Mat4::IDENTITY.to_cols_array_2d(),
+        }
+    }
+}
+
 fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vertex>, Vec<u16>) {
     // Imagine a pizza: one vertex at the center, then a ring of vertices around the edge
     // Each slice (center + two edge points) is one triangle
@@ -109,6 +123,9 @@ pub struct State {
     circle_index_buffer: wgpu::Buffer,
     circle_num_indices: u32,
     render_pipeline: wgpu::RenderPipeline,
+    uniform_buffer: wgpu::Buffer,
+    uniform_bind_group: wgpu::BindGroup,
+    start_time: std::time::Instant,
 }
 
 impl State {
@@ -171,14 +188,44 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        // 8. Define pipeline layout (no uniforms yet, so empty)
+        // 8. Create uniform buffer and bind group
+        let uniforms = Uniforms::new();
+        // Creates block of GPU memory that holds your transformation matrix
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Uniform Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Uniform Bind Group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        // 9. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[&uniform_bind_group_layout],
             push_constant_ranges: &[],
         });
 
-        // 9. Create render pipeline
+        // 10. Create render pipeline
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&pipeline_layout),
@@ -205,7 +252,7 @@ impl State {
             cache: None,
         });
 
-        // 10. Create vertex buffer from vertices
+        // 11. Create vertex buffer from vertices
         let triangle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Triangle Vertex Buffer"),
             contents: bytemuck::cast_slice(TRIANGLE_VERTICES),
@@ -236,6 +283,8 @@ impl State {
         });
         let circle_num_indices = circle_indices.len() as u32;
 
+        let start_time = std::time::Instant::now();
+
         Self {
             surface,
             device,
@@ -251,7 +300,10 @@ impl State {
             circle_vertex_buffer,
             circle_index_buffer,
             circle_num_indices,
-            render_pipeline
+            render_pipeline,
+            uniform_buffer,
+            uniform_bind_group,
+            start_time
         }
     }
 
@@ -284,6 +336,14 @@ impl State {
     }
 
     fn update(&mut self) {
+        // Rotate around Z
+        let rotation = glam::Mat4::from_rotation_z(self.start_time.elapsed().as_secs_f32());
+
+        let uniforms = Uniforms {
+            transform: rotation.to_cols_array_2d(),
+        };
+
+        self.queue.write_buffer(&self.uniform_buffer, 0, &bytemuck::cast_slice(&[uniforms]));
         // remove `todo!()`
     }
 
@@ -326,6 +386,7 @@ impl State {
                         timestamp_writes: None,
                     });
                     render_pass.set_pipeline(&self.render_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                     
                     // Draw triangle
                     render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
