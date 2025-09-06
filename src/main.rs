@@ -290,65 +290,83 @@ impl State {
     // Render a single frame (clear screen to a color)
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         // 1. Acquire next frame from surface
-        let output = self.surface.get_current_texture()?;
+        // Refine error handling
+        match self.surface.get_current_texture() {
+            Ok(output) => {
+                // 2. Create a view into the frame (like a convas we draw on)
+                let view = output
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
 
-        // 2. Create a view into the frame (like a convas we draw on)
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+                // 3. Create command encoder (records GPU commands)
+                let mut encoder = self
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {label: Some("Render Encoder")});
 
-        // 3. Create command encoder (records GPU commands)
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {label: Some("Render Encoder")});
+                {
+                    // 4. Begin render pass (define clear color + attachments)
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Render Pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                // This clears the screen every frame
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: 0.1,
+                                    g: 0.2,
+                                    b: 0.3,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        occlusion_query_set: None,
+                        timestamp_writes: None,
+                    });
+                    render_pass.set_pipeline(&self.render_pipeline);
+                    
+                    // Draw triangle
+                    render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
+                    render_pass.draw(0..TRIANGLE_VERTICES.len() as u32, 0..1);
 
-        {
-            // 4. Begin render pass (define clear color + attachments)
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        // This clears the screen every frame
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
-            render_pass.set_pipeline(&self.render_pipeline);
-            
-            // Draw triangle
-            render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
-            render_pass.draw(0..TRIANGLE_VERTICES.len() as u32, 0..1);
+                    // Draw square
+                    render_pass.set_vertex_buffer(0, self.square_vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(self.square_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    render_pass.draw_indexed(0..self.square_num_indices, 0, 0..1);
 
-            // Draw square
-            render_pass.set_vertex_buffer(0, self.square_vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.square_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.square_num_indices, 0, 0..1);
+                    // Draw Circle
+                    render_pass.set_vertex_buffer(0, self.circle_vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(self.circle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    render_pass.draw_indexed(0..self.circle_num_indices, 0, 0..1);
+                    // Render pass dropped here, finishing recording
+                }
 
-            // Draw Circle
-            render_pass.set_vertex_buffer(0, self.circle_vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.circle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.circle_num_indices, 0, 0..1);
-            // Render pass dropped here, finishing recording
+                // 5. Submit recording command to GPU queue
+                self.queue.submit(std::iter::once(encoder.finish()));
+
+                // 6. Present frame to screen
+                output.present();
+
+                Ok(())
+            }
+            Err(wgpu::SurfaceError::Lost) => {
+                // Reconfigure with the current state
+                self.resize(self.size);
+                Ok(())
+            }
+            Err(wgpu::SurfaceError::OutOfMemory) => {
+                // Fatal: exit program
+                Err(wgpu::SurfaceError::OutOfMemory)
+            }
+            Err(e) => {
+                eprintln!("Render error: {:?}", e);
+                Ok(())
+            }
         }
 
-        // 5. Submit recording command to GPU queue
-        self.queue.submit(std::iter::once(encoder.finish()));
-
-        // 6. Present frame to screen
-        output.present();
-
-        Ok(())
+        
     }
 }
 
