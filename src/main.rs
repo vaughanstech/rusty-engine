@@ -69,6 +69,10 @@ impl Uniforms {
             transform: glam::Mat4::IDENTITY.to_cols_array_2d(),
         }
     }
+
+    fn from_mat4(mat: glam::Mat4) -> Self {
+        Self {transform: mat.to_cols_array_2d()}
+    }
 }
 
 fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vertex>, Vec<u16>) {
@@ -106,6 +110,90 @@ fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vertex>,
     (vertices, indices)
 }
 
+pub struct Renderable {
+    pub vertex_buffer: wgpu::Buffer, // vertex data
+    pub index_buffer: Option<wgpu::Buffer>, // optional
+    pub num_vertices: u32, // counts for draw cells
+    pub num_indices: u32, // counts for draw cells
+    pub uniform_buffer: wgpu::Buffer, // handles transform
+    pub bind_group: wgpu::BindGroup, // handles transform
+    pub transform: glam::Mat4, // CPU-side state, updated in update()
+}
+
+impl Renderable {
+    pub fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        vertices: &[Vertex],
+        indices: Option<&[u16]>,
+        initial_transform: glam::Mat4,
+    ) -> Self {
+        // Vertex buffer
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        // Index buffer (optional)
+        let (index_buffer, num_indices) = if let Some(idx) = indices {
+            let buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(idx),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+            (Some(buf), idx.len() as u32)
+        } else {
+            (None, 0)
+        };
+
+        // Uniform buffer
+        let uniforms = Uniforms::from_mat4(initial_transform);
+        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Bind group
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Uniform Buind Group"),
+            layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
+
+        Self {
+            vertex_buffer,
+            index_buffer,
+            num_vertices: vertices.len() as u32,
+            num_indices,
+            uniform_buffer,
+            bind_group,
+            transform: initial_transform,
+        }
+    }
+
+    pub fn update(&mut self, queue: &wgpu::Queue) {
+        let uniforms = Uniforms::from_mat4(self.transform);
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+    }
+
+    pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+        if let Some(index_buf) = &self.index_buffer {
+            render_pass.set_index_buffer(index_buf.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        } else {
+            render_pass.draw(0..self.num_vertices, 0..1);
+        }
+    } 
+}
+
 // We'll create a struct to manage our GPU state
 pub struct State {
     surface: wgpu::Surface<'static>, // The surface (connection between window & GPU)
@@ -123,8 +211,9 @@ pub struct State {
     circle_index_buffer: wgpu::Buffer,
     circle_num_indices: u32,
     render_pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
+    renderables: Vec<Renderable>,
+    uniform_bind_group_layout: wgpu::BindGroupLayout,
     start_time: std::time::Instant,
 }
 
@@ -285,6 +374,59 @@ impl State {
 
         let start_time = std::time::Instant::now();
 
+        // Initial transforms (move shapes apart)
+        let triangle_mat = glam::Mat4::from_translation(glam::vec3(0.0, 0.5, 0.0));
+        let square_mat = glam::Mat4::from_translation(glam::vec3(-0.5, -0.5, 0.0));
+        let circle_mat = glam::Mat4::from_translation(glam::vec3(0.5, -0.5, 0.0));
+
+        // Convert to uniforms
+        let triangle_uniforms = Uniforms::from_mat4(triangle_mat);
+        let square_uniforms = Uniforms::from_mat4(square_mat);
+        let circle_uniforms = Uniforms::from_mat4(circle_mat);
+
+        // --- Buffers
+        let triangle_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Triangle Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[triangle_uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let square_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Square Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[square_uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let circle_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Circle Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[circle_uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // --- Bind groups
+        let triangle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Triangle Bind Group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: triangle_uniform_buffer.as_entire_binding(),
+            }],
+        });
+        let square_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Square Bind Group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: square_uniform_buffer.as_entire_binding(),
+            }],
+        });
+        let circle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Circle Bind Group"),
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: circle_uniform_buffer.as_entire_binding(),
+            }],
+        });
+
         Self {
             surface,
             device,
@@ -301,8 +443,13 @@ impl State {
             circle_index_buffer,
             circle_num_indices,
             render_pipeline,
-            uniform_buffer,
             uniform_bind_group,
+            triangle_uniform_buffer,
+            triangle_bind_group,
+            square_uniform_buffer,
+            square_bind_group,
+            circle_uniform_buffer,
+            circle_bind_group,
             start_time
         }
     }
@@ -336,15 +483,21 @@ impl State {
     }
 
     fn update(&mut self) {
-        // Rotate around Z
-        let rotation = glam::Mat4::from_rotation_z(self.start_time.elapsed().as_secs_f32());
+        let time = self.start_time.elapsed().as_secs_f32();
+        
+        // triangle rotates clockwise
+        let tri_mat = glam::Mat4::from_translation(glam::vec3(0.0, 0.5, 0.0)) * glam::Mat4::from_rotation_z(time);
 
-        let uniforms = Uniforms {
-            transform: rotation.to_cols_array_2d(),
-        };
+        // square rotates counter-clockwise
+        let sq_mat = glam::Mat4::from_translation(glam::vec3(-0.5, -0.5, 0.0)) * glam::Mat4::from_rotation_z(-time);
 
-        self.queue.write_buffer(&self.uniform_buffer, 0, &bytemuck::cast_slice(&[uniforms]));
-        // remove `todo!()`
+        // circle rotates slower
+        let circ_mat = glam::Mat4::from_translation(glam::vec3(0.5, -0.5, 0.0)) * glam::Mat4::from_rotation_z(time * 0.5);
+
+        // write updates into GPU buffers
+        self.queue.write_buffer(&self.triangle_uniform_buffer, 0, bytemuck::cast_slice(&[Uniforms::from_mat4(tri_mat)]));
+        self.queue.write_buffer(&self.square_uniform_buffer, 0, bytemuck::cast_slice(&[Uniforms::from_mat4(sq_mat)]));
+        self.queue.write_buffer(&self.circle_uniform_buffer, 0, bytemuck::cast_slice(&[Uniforms::from_mat4(circ_mat)]));
     }
 
     // Render a single frame (clear screen to a color)
@@ -389,15 +542,19 @@ impl State {
                     render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                     
                     // Draw triangle
+                    render_pass.set_pipeline(&self.render_pipeline);
+                    render_pass.set_bind_group(0, &self.triangle_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
                     render_pass.draw(0..TRIANGLE_VERTICES.len() as u32, 0..1);
 
                     // Draw square
+                    render_pass.set_bind_group(0, &self.square_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, self.square_vertex_buffer.slice(..));
                     render_pass.set_index_buffer(self.square_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                     render_pass.draw_indexed(0..self.square_num_indices, 0, 0..1);
 
                     // Draw Circle
+                    render_pass.set_bind_group(0, &self.circle_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, self.circle_vertex_buffer.slice(..));
                     render_pass.set_index_buffer(self.circle_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                     render_pass.draw_indexed(0..self.circle_num_indices, 0, 0..1);
