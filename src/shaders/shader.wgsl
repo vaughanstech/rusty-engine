@@ -1,3 +1,13 @@
+/*
+Purpose: WGSL shader code
+Responsibilites:
+    - shader.wgsl: Core vertex/fragment shader (handles transforms, colors)
+    - lighting.wgsl: per-pixel lights
+    - postprocess.wgsl: screen-space effects
+    - texturing.wgsl: UV sampling
+    - ex: The brain, runs directly on GPU, decides how stuff looks
+*/
+
 // Vertex shader: outputs position + color
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
