@@ -10,17 +10,17 @@ Responsibilities:
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Uniforms {
-    transform: [[f32; 4]; 4],
+    pub mvp: [[f32; 4]; 4],
 }
 
 impl Uniforms {
     pub fn new() -> Self {
         Self {
-            transform: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            mvp: glam::Mat4::IDENTITY.to_cols_array_2d(),
         }
     }
 
-    pub fn from_mat4(mat: glam::Mat4) -> Self {
-        Self {transform: mat.to_cols_array_2d()}
+    pub fn update_model(&mut self, mvp: glam::Mat4) {
+        self.mvp = mvp.to_cols_array_2d();
     }
 }

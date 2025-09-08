@@ -9,10 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    renderable::Renderable,
-    uniforms::Uniforms,
-    vertex::Vertex,
-    shapes::{TRIANGLE_VERTICES, SQUARE_VERTICES, SQUARE_INDICES, create_circle},
+    camera::{Camera}, renderable::Renderable, shapes::{create_circle, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -31,6 +28,7 @@ pub struct State {
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
     uniform_bind_group: wgpu::BindGroup,
+    camera: Camera,
     renderables: Vec<Renderable>,
     start_time: std::time::Instant,
 }
@@ -177,6 +175,16 @@ impl State {
             }],
         });
 
+        let camera = Camera {
+            eye: (0.0, 0.0, 2.0).into(),
+            target: (0.0, 0.0, 0.0).into(),
+            up: glam::Vec3::Y,
+            aspect: config.width as f32 / config.height as f32,
+            fov_y: 45.0f32.to_radians(),
+            z_near: 0.1,
+            z_far: 100.0,
+        };
+
         // Create triangle, square, circle
         let triangle = Renderable::new(
             &device,
@@ -211,6 +219,7 @@ impl State {
             window: window,
             render_pipeline,
             uniform_bind_group,
+            camera,
             renderables,
             start_time
         }
@@ -245,18 +254,11 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        let time = self.start_time.elapsed().as_secs_f32();
-        
-        // Spin each shape differently
-        self.renderables[0].transform =
-            glam::Mat4::from_translation(glam::vec3(0.0, 0.5, 0.0)) * glam::Mat4::from_rotation_z(time);
-        self.renderables[1].transform =
-            glam::Mat4::from_translation(glam::vec3(-0.5, -0.5, 0.0)) * glam::Mat4::from_rotation_z(-time);
-        self.renderables[2].transform =
-            glam::Mat4::from_translation(glam::vec3(0.5, -0.5, 0.0)) * glam::Mat4::from_rotation_z(time * 0.5);
+        let elapsed = self.start_time.elapsed().as_secs_f32();
+        let view_proj = self.camera.build_view_projection_matrix();
         
         for r in &mut self.renderables {
-            r.update(&self.queue);
+            r.update(&self.queue, elapsed, view_proj);
         }
     }
 

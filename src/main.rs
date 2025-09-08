@@ -8,6 +8,7 @@ Responsibilities:
 */
 
 mod app;
+mod camera;
 mod state;
 mod renderable;
 mod vertex;
