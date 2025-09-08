@@ -176,9 +176,9 @@ impl State {
         });
 
         let camera = Camera {
-            eye: (0.0, 0.0, 2.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
-            up: glam::Vec3::Y,
+            eye: (0.0, 0.0, 5.0).into(), // camera position
+            target: (0.0, 0.0, 0.0).into(), // looking at origin
+            up: glam::Vec3::Y, // "up" is +y
             aspect: config.width as f32 / config.height as f32,
             fov_y: 45.0f32.to_radians(),
             z_near: 0.1,
@@ -245,6 +245,7 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
+            self.camera.aspect = new_size.width as f32 / new_size.height as f32
         }
     }
 
