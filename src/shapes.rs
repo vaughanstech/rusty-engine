@@ -9,16 +9,16 @@ Responsibilities:
 use crate::vertex::Vertex;
 
 pub const TRIANGLE_VERTICES: &[Vertex] = &[
-    Vertex {position: [0.0, 0.5], color: [1.0, 0.0, 0.0]}, // top
-    Vertex {position: [-0.5, -0.5], color: [1.0, 0.0, 0.0]}, // bottom left
-    Vertex {position: [0.5, -0.5], color: [1.0, 0.0, 0.0]}, // bottom right
+    Vertex {position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0]}, // top
+    Vertex {position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0]}, // bottom left
+    Vertex {position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0]}, // bottom right
 ];
 
 pub const SQUARE_VERTICES: &[Vertex] = &[
-    Vertex {position: [-0.25, 0.25], color: [0.0, 1.0, 0.0]}, // top left
-    Vertex {position: [0.25, 0.25], color: [0.0, 1.0, 0.0]}, // top right
-    Vertex {position: [0.25, -0.25], color: [0.0, 0.0, 1.0]}, // bottom right
-    Vertex {position: [-0.25, -0.25], color: [0.0, 0.0, 1.0]}, // bottom left
+    Vertex {position: [-0.25, 0.25, 0.0], color: [1.0, 1.0, 0.0]}, // top left
+    Vertex {position: [0.25, 0.25, 0.0], color: [0.0, 1.0, 1.0]}, // top right
+    Vertex {position: [0.25, -0.25, 0.0], color: [1.0, 0.0, 1.0]}, // bottom right
+    Vertex {position: [-0.25, -0.25, 0.0], color: [1.0, 0.5, 0.0]}, // bottom left
 ];
 
 // Indices define which vertices make up triangles
@@ -38,7 +38,7 @@ pub fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vert
 
     // Center vertex
     vertices.push(Vertex {
-        position: [0.0, 0.0],
+        position: [0.0, 0.0, 0.0],
         color,
     });
 
@@ -49,7 +49,7 @@ pub fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vert
         let y = radius * theta.sin();
 
         vertices.push(Vertex {
-            position: [x,y],
+            position: [x,y, 0.0],
             color,
         });
 

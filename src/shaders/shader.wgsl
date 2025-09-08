@@ -11,9 +11,11 @@ Responsibilites:
 // Vertex shader: outputs position + color
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
+    @location(1) color: vec3<f32>,
 };
 struct VertexInput {
-    @location(0) position: vec2<f32>,
+    @location(0) position: vec3<f32>,
+    @location(1) color: vec3<f32>,
 };
 
 // Vertex shader: takes position and passes it along
@@ -31,6 +33,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     out.position = uniforms.mvp * vec4<f32>(in.position, 1.0);
+    out.color = in.color;
     return out;
 }
 

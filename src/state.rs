@@ -188,24 +188,36 @@ impl State {
         // Create triangle, square, circle
         let triangle = Renderable::new(
             &device,
+            &queue,
+            &render_pipeline,
             &uniform_bind_group_layout,
             &TRIANGLE_VERTICES,
             None,
-            glam::Mat4::from_translation(glam::vec3(0.0, 0.5, 0.0)),
+            glam::vec3(-1.0, 0.0, 0.0), // position in world
+            glam::vec3(0.0, 0.0, 1.0), // spin around Z
+            glam::vec3(1.0, 1.0, 1.0), // scale
         );
         let square = Renderable::new(
             &device,
+            &queue,
+            &render_pipeline,
             &uniform_bind_group_layout,
             &SQUARE_VERTICES,
             Some(&SQUARE_INDICES),
-            glam::Mat4::from_translation(glam::vec3(-0.5, -0.5, 0.0)),
+            glam::vec3(1.0, 0.0, 0.0), // position
+            glam::vec3(0.0, 1.0, 0.0), // spin around Y
+            glam::vec3(1.0, 1.0, 1.0), // scale
         );
         let circle = Renderable::new(
             &device,
+            &queue,
+            &render_pipeline,
             &uniform_bind_group_layout,
             &circle_vertices,
             Some(&circle_indices),
-            glam::Mat4::from_translation(glam::vec3(0.5, -0.5, 0.0)),
+            glam::vec3(0.0, -1.0, 0.0), // position
+            glam::vec3(1.0, 0.0, 0.0), // spin around X
+            glam::vec3(1.0, 1.0, 1.0), // scale
         );
         let renderables = vec![triangle, square, circle];
 
@@ -254,11 +266,11 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
+        let time = self.start_time.elapsed().as_secs_f32();
         let view_proj = self.camera.build_view_projection_matrix();
         
         for r in &mut self.renderables {
-            r.update(&self.queue, elapsed, view_proj);
+            r.update(&self.queue, time, view_proj);
         }
     }
 

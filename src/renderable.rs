@@ -11,6 +11,7 @@ use crate::uniforms::{Uniforms};
 use crate::vertex::Vertex;
 use wgpu::util::DeviceExt;
 
+#[allow(dead_code)]
 pub struct Renderable {
     pub vertex_buffer: wgpu::Buffer, // vertex data
     pub index_buffer: Option<wgpu::Buffer>, // optional
@@ -26,6 +27,8 @@ pub struct Renderable {
 impl Renderable {
     pub fn new(
         device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        _render_pipeline: &wgpu::RenderPipeline,
         uniform_bind_group_layout: &wgpu::BindGroupLayout,
         vertices: &[Vertex],
         indices: Option<&[u16]>,
