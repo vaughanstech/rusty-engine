@@ -9,11 +9,12 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera}, renderable::Renderable, shapes::{create_circle, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, renderable::Renderable, shapes::{create_circle, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
+use glam::vec3;
 use wgpu::util::DeviceExt;
-use winit::{event_loop::ActiveEventLoop, keyboard::KeyCode};
+use winit::{event_loop::ActiveEventLoop, keyboard::{KeyCode}};
 use winit::event::WindowEvent;
 use winit::window::Window;
 
@@ -29,6 +30,11 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
     uniform_bind_group: wgpu::BindGroup,
     camera: Camera,
+    pub controller: Controller,
+    camera_uniform: CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
+    last_frame: std::time::Instant,
     renderables: Vec<Renderable>,
     start_time: std::time::Instant,
 }
@@ -122,15 +128,55 @@ impl State {
                 resource: uniform_buffer.as_entire_binding(),
             }],
         });
+        // 9. Setup Camera uniform buffer and bind group
+        let camera = Camera {
+            eye: vec3(0.0, 0.0, 3.0), // camera position
+            target: vec3(0.0, 0.0, 0.0), // looking at origin
+            up: glam::Vec3::Y, // "up" is +y
+            aspect: config.width as f32 / config.height as f32,
+            fov_y: 45.0f32.to_radians(),
+            z_near: 0.1,
+            z_far: 100.0,
+        };
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera);
 
-        // 9. Define pipeline layout
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("Camera Bind Group Layout"),
+        });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("Camera Bind Group"),
+        });
+        let controller = Controller::new(2.0, 0.5);
+
+        // 10. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout],
+            bind_group_layouts: &[&uniform_bind_group_layout, &camera_bind_group_layout],
             push_constant_ranges: &[],
         });
 
-        // 10. Create render pipeline
+        // 11. Create render pipeline
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&pipeline_layout),
@@ -174,16 +220,6 @@ impl State {
                 count: None,
             }],
         });
-
-        let camera = Camera {
-            eye: (0.0, 0.0, 5.0).into(), // camera position
-            target: (0.0, 0.0, 0.0).into(), // looking at origin
-            up: glam::Vec3::Y, // "up" is +y
-            aspect: config.width as f32 / config.height as f32,
-            fov_y: 45.0f32.to_radians(),
-            z_near: 0.1,
-            z_far: 100.0,
-        };
 
         // Create triangle, square, circle
         let triangle = Renderable::new(
@@ -232,6 +268,11 @@ impl State {
             render_pipeline,
             uniform_bind_group,
             camera,
+            camera_bind_group,
+            camera_buffer,
+            camera_uniform,
+            controller,
+            last_frame: std::time::Instant::now(),
             renderables,
             start_time
         }
@@ -261,14 +302,22 @@ impl State {
         self.window.as_ref()
     }
 
-    #[allow(unused_variables)]
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        self.controller.process_events(event)
     }
 
     pub fn update(&mut self) {
-        let time = self.start_time.elapsed().as_secs_f32();
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f32();
+        self.last_frame = now;
         let view_proj = self.camera.build_view_projection_matrix();
+
+        self.controller.update_camera(&mut self.camera, dt);
+
+        let time = self.start_time.elapsed().as_secs_f32();
+
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
         
         for r in &mut self.renderables {
             r.update(&self.queue, time, view_proj);
@@ -315,6 +364,7 @@ impl State {
                     });
                     render_pass.set_pipeline(&self.render_pipeline);
                     render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
                     
                     for r in &self.renderables {
                         r.draw(&mut render_pass);

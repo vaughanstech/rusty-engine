@@ -79,7 +79,11 @@ impl ApplicationHandler for App {
                         state.resize(physical_size);
                     }
                 }
-                _ => {}
+                _ => {
+                    if let Some(state) = self.state.as_mut() {
+                        state.controller.process_events(&event);
+                    }
+                }
             }
     }
 }

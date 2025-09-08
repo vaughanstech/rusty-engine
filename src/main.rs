@@ -9,6 +9,7 @@ Responsibilities:
 
 mod app;
 mod camera;
+mod controller;
 mod state;
 mod renderable;
 mod vertex;
