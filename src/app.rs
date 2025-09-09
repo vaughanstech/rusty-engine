@@ -1,9 +1,9 @@
-use crate::state::State;
+use crate::state::{State};
 use pollster::FutureExt;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::WindowAttributes,
@@ -85,5 +85,16 @@ impl ApplicationHandler for App {
                     }
                 }
             }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: DeviceEvent,
+    ) {
+        if let Some(state) = self.state.as_mut() {
+            state.controller.process_device_event(&event);
+        }
     }
 }

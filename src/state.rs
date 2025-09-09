@@ -310,7 +310,7 @@ impl State {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32();
         self.last_frame = now;
-        let view_proj = self.camera.build_view_projection_matrix();
+        let view_proj = self.camera.build_view_projection_matrix().into();
 
         self.controller.update_camera(&mut self.camera, dt);
 
