@@ -6,17 +6,19 @@ use winit::{
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::WindowAttributes,
+    window::{WindowAttributes,CursorGrabMode},
 };
 
 pub struct App {
     state: Option<State>,
+    cursor_locked: bool,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
             state: None,
+            cursor_locked: false,
         }
     }
 }
@@ -27,6 +29,11 @@ impl ApplicationHandler for App {
             .with_title("Rusty Engine")
             .with_inner_size(PhysicalSize::new(800, 600));
         let window = event_loop.create_window(window_attributes).unwrap();
+        // Try to confine or lock the cursor to the window
+        if window.set_cursor_grab(CursorGrabMode::Confined).is_err() {
+            // Fallback if platform doesn't support confinement
+            let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+        }
         self.state = Some(State::new(window).block_on());
     }
 
@@ -52,6 +59,30 @@ impl ApplicationHandler for App {
                         },
                     ..
                 } => event_loop.exit(),
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            state: ElementState::Pressed,
+                            physical_key: PhysicalKey::Code(KeyCode::KeyL),
+                            ..
+                        },
+                    ..
+                } => {
+                    if let Some(state) = self.state.as_mut() {
+                        let window = state.window();
+                        if self.cursor_locked {
+                            // Unlock
+                            let _ = window.set_cursor_grab(CursorGrabMode::None);
+                            self.cursor_locked = false;
+                        } else {
+                            // Lock
+                            if window.set_cursor_grab(CursorGrabMode::Confined).is_err() {
+                                let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                            }
+                            self.cursor_locked = true;
+                        }
+                    }
+                }
                 WindowEvent::RedrawRequested => {
                     if let Some(state) = self.state.as_mut() {
                         state.window().request_redraw();
