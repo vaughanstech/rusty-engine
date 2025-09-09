@@ -5,6 +5,7 @@ use crate::camera::Camera;
 pub struct Controller {
     pub speed: f32,
     pub sensitivity: f32,
+    pub scroll_sensitivity: f32,
 
     w_pressed: bool,
     s_pressed: bool,
@@ -17,13 +18,15 @@ pub struct Controller {
     pitch: f32,
     last_mouse_position: Option<(f64, f64)>,
     mouse_pressed: bool,
+    scroll: f32,
 }
 
 impl Controller {
-    pub fn new(speed: f32, sensitivity: f32) -> Self {
+    pub fn new(speed: f32, sensitivity: f32, scroll_sensitivity: f32) -> Self {
         Self {
             speed,
             sensitivity,
+            scroll_sensitivity,
             w_pressed: false,
             s_pressed: false,
             a_pressed: false,
@@ -34,6 +37,7 @@ impl Controller {
             pitch: 0.0,
             last_mouse_position: None,
             mouse_pressed: false,
+            scroll: 0.0
         }
     }
 
@@ -69,6 +73,8 @@ impl Controller {
             DeviceEvent::MouseMotion { delta } => {
                 if self.mouse_pressed {
                     let (dy, dx) = *delta;
+
+                    // apply sensitivity scaling
                     self.yaw += (dx as f32) * self.sensitivity;
                     self.pitch -= (dy as f32) * self.sensitivity;
 
@@ -77,11 +83,22 @@ impl Controller {
                 }
                 true
             }
+            DeviceEvent::MouseWheel { delta } => {
+                use winit::event::MouseScrollDelta;
+
+                let scroll_amount = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => *y,
+                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                };
+
+                self.scroll += scroll_amount * self.scroll_sensitivity;
+                true
+            }
             _ => false,
         }
     }
 
-    pub fn update_camera(&self, camera: &mut Camera, dt: f32) {
+    pub fn update_camera(&mut self, camera: &mut Camera, dt: f32) {
         let forward = (camera.target - camera.eye).normalize();
         let right = forward.cross(camera.up).normalize();
 
@@ -117,5 +134,12 @@ impl Controller {
             yaw_rad.sin() * pitch_rad.cos(),
         ).normalize();
         camera.target = camera.eye + dir;
+
+        // zoom in/out by adjusting the eye distance
+        if self.scroll != 0.0 {
+            let direction = (camera.target - camera.eye).normalize();
+            camera.eye += direction * self.scroll;
+            self.scroll = 0.0; // reset after applying
+        }
     }
 }

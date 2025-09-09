@@ -167,7 +167,7 @@ impl State {
             }],
             label: Some("Camera Bind Group"),
         });
-        let controller = Controller::new(2.0, 0.5);
+        let controller = Controller::new(2.0, 0.5, 1.0);
 
         // 10. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
