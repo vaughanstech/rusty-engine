@@ -9,13 +9,16 @@ Responsibilites:
 */
 
 // Vertex shader: outputs position + color
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    @location(1) color: vec3<f32>,
-};
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) color: vec3<f32>,
+    @location(2) tex_coords: vec2<f32>,
+};
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) color: vec3<f32>,
+    @location(1) tex_coords: vec2<f32>,
 };
 
 // Vertex shader: takes position and passes it along
@@ -26,6 +29,12 @@ struct Uniforms {
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
+
+@group(2) @binding(0)
+var myTexture: texture_2d<f32>;
+
+@group(2) @binding(1)
+var mySampler: sampler;
 
 
 struct Camera {
@@ -41,13 +50,15 @@ fn vs_main(
     in: VertexInput
 ) -> VertexOutput {
     var out: VertexOutput;
-    out.position = uniforms.mvp * vec4<f32>(in.position, 1.0);
+    out.clip_position = uniforms.mvp * vec4<f32>(in.position, 1.0);
     out.color = in.color;
+    out.tex_coords = in.tex_coords;
     return out;
 }
 
 // Fragment shader: takes color from vertex shader
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
+    let tex_color = textureSample(myTexture, mySampler, in.tex_coords);
+    return tex_color * vec4(in.color, 1.0);
 }

@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, renderable::Renderable, shapes::{create_circle, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, renderable::{Material, Renderable}, shapes::{create_circle, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -29,6 +29,7 @@ pub struct State {
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
     uniform_bind_group: wgpu::BindGroup,
+    diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
     pub controller: Controller,
     camera_uniform: CameraUniform,
@@ -167,12 +168,49 @@ impl State {
             }],
             label: Some("Camera Bind Group"),
         });
+        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Text Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let diffuse_bytes = include_bytes!("happy_tree.png"); // example image
+        let diffuse_texture = Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree");
+        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                },
+            ],
+            label: Some("Diffuse Bind Group"),
+        });
         let controller = Controller::new(2.0, 0.5, 1.0);
 
         // 10. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout, &camera_bind_group_layout],
+            bind_group_layouts: &[&uniform_bind_group_layout, &camera_bind_group_layout, &texture_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -203,7 +241,7 @@ impl State {
             cache: None,
         });
 
-        let (circle_vertices, circle_indices) = create_circle(0.4, 64, [0.0, 0.0, 1.0]);
+        let (circle_vertices, circle_indices) = create_circle(0.4, 64, [0.0, 0.0, 1.0], [0.5, 0.5]);
 
         let start_time = std::time::Instant::now();
 
@@ -221,6 +259,11 @@ impl State {
             }],
         });
 
+        let (_white_tex, white_bind_group) = texture::create_white_texture(
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        );
         // Create triangle, square, circle
         let triangle = Renderable::new(
             &device,
@@ -229,10 +272,18 @@ impl State {
             &uniform_bind_group_layout,
             &TRIANGLE_VERTICES,
             None,
+            Material::ColorOnly { bind_group: white_bind_group, },
             glam::vec3(-1.0, 0.0, 0.0), // position in world
             glam::vec3(0.0, 0.0, 1.0), // spin around Z
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
+
+        let (texture, tex_bind_group) = texture::load_texture(
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+            r"src\happy_tree.png",
+        ).expect("Failed to load texture");
         let square = Renderable::new(
             &device,
             &queue,
@@ -240,22 +291,23 @@ impl State {
             &uniform_bind_group_layout,
             &SQUARE_VERTICES,
             Some(&SQUARE_INDICES),
+            Material::Textured { bind_group: tex_bind_group },
             glam::vec3(1.0, 0.0, 0.0), // position
             glam::vec3(0.0, 1.0, 0.0), // spin around Y
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
-        let circle = Renderable::new(
-            &device,
-            &queue,
-            &render_pipeline,
-            &uniform_bind_group_layout,
-            &circle_vertices,
-            Some(&circle_indices),
-            glam::vec3(0.0, -1.0, 0.0), // position
-            glam::vec3(1.0, 0.0, 0.0), // spin around X
-            glam::vec3(1.0, 1.0, 1.0), // scale
-        );
-        let renderables = vec![triangle, square, circle];
+        // let circle = Renderable::new(
+        //     &device,
+        //     &queue,
+        //     &render_pipeline,
+        //     &uniform_bind_group_layout,
+        //     &circle_vertices,
+        //     Some(&circle_indices),
+        //     glam::vec3(0.0, -1.0, 0.0), // position
+        //     glam::vec3(1.0, 0.0, 0.0), // spin around X
+        //     glam::vec3(1.0, 1.0, 1.0), // scale
+        // );
+        let renderables = vec![triangle, square];
 
         Self {
             surface,
@@ -267,6 +319,7 @@ impl State {
             window: window,
             render_pipeline,
             uniform_bind_group,
+            diffuse_bind_group,
             camera,
             camera_bind_group,
             camera_buffer,
@@ -365,8 +418,14 @@ impl State {
                     render_pass.set_pipeline(&self.render_pipeline);
                     render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                     render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                    render_pass.set_bind_group(2, &self.diffuse_bind_group, &[]);
                     
                     for r in &self.renderables {
+                        match &r.material {
+                            Material::ColorOnly { bind_group } | Material::Textured { bind_group } => {
+                                render_pass.set_bind_group(0, bind_group, &[]);
+                            }
+                        }
                         r.draw(&mut render_pass);
                     }
                     // Render pass dropped here, finishing recording

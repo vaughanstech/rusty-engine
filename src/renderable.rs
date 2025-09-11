@@ -7,15 +7,27 @@ Responsibilities:
     - Implement draw() (set buffers and issue draw call)
 */
 
+use crate::renderable;
 use crate::uniforms::{Uniforms};
 use crate::vertex::Vertex;
 use wgpu::util::DeviceExt;
+
+// Defining a material abstraction for renderables
+pub enum Material {
+    ColorOnly {
+        bind_group: wgpu::BindGroup,
+    },
+    Textured {
+        bind_group: wgpu::BindGroup,
+    },
+}
 
 #[allow(dead_code)]
 pub struct Renderable {
     pub vertex_buffer: wgpu::Buffer, // vertex data
     pub index_buffer: Option<wgpu::Buffer>, // optional
     pub num_indices: u32, // counts for draw cells
+    pub material: Material, // material abstraction
     pub uniform_buffer: wgpu::Buffer, // handles transform
     pub uniform_bind_group: wgpu::BindGroup, // handles transform
     pub position: glam::Vec3,
@@ -32,6 +44,7 @@ impl Renderable {
         uniform_bind_group_layout: &wgpu::BindGroupLayout,
         vertices: &[Vertex],
         indices: Option<&[u16]>,
+        material: Material,
         position: glam::Vec3,
         rotation_speed: glam::Vec3,
         scale: glam::Vec3,
@@ -77,6 +90,7 @@ impl Renderable {
             vertex_buffer,
             index_buffer,
             num_indices,
+            material,
             uniform_buffer,
             uniform_bind_group,
             position,

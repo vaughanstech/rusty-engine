@@ -9,16 +9,17 @@ Responsibilities:
 use crate::vertex::Vertex;
 
 pub const TRIANGLE_VERTICES: &[Vertex] = &[
-    Vertex {position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0]}, // top
-    Vertex {position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0]}, // bottom left
-    Vertex {position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0]}, // bottom right
+    Vertex {position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0], tex_coords: [0.5, 0.0]}, // top
+    Vertex {position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0], tex_coords: [0.0, 1.0]}, // bottom left
+    Vertex {position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0]}, // bottom right
 ];
+pub const TRIANGLE_INDICES: &[u16] = &[0, 1, 2];
 
 pub const SQUARE_VERTICES: &[Vertex] = &[
-    Vertex {position: [-0.25, 0.25, 0.0], color: [1.0, 1.0, 0.0]}, // top left
-    Vertex {position: [0.25, 0.25, 0.0], color: [0.0, 1.0, 1.0]}, // top right
-    Vertex {position: [0.25, -0.25, 0.0], color: [1.0, 0.0, 1.0]}, // bottom right
-    Vertex {position: [-0.25, -0.25, 0.0], color: [1.0, 0.5, 0.0]}, // bottom left
+    Vertex {position: [-0.25, 0.25, 0.0], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0]}, // top left
+    Vertex {position: [0.25, 0.25, 0.0], color: [0.0, 1.0, 1.0], tex_coords: [1.0, 1.0]}, // top right
+    Vertex {position: [0.25, -0.25, 0.0], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0]}, // bottom right
+    Vertex {position: [-0.25, -0.25, 0.0], color: [1.0, 0.5, 0.0], tex_coords: [0.0, 0.0]}, // bottom left
 ];
 
 // Indices define which vertices make up triangles
@@ -29,7 +30,7 @@ pub const SQUARE_INDICES: &[u16] = &[
 
 
 
-pub fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vertex>, Vec<u16>) {
+pub fn create_circle(radius: f32, segments: usize, color: [f32; 3], tex_coords: [f32; 2]) -> (Vec<Vertex>, Vec<u16>) {
     // Imagine a pizza: one vertex at the center, then a ring of vertices around the edge
     // Each slice (center + two edge points) is one triangle
     // Put enough slices together -> looks like a circle
@@ -40,6 +41,7 @@ pub fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vert
     vertices.push(Vertex {
         position: [0.0, 0.0, 0.0],
         color,
+        tex_coords,
     });
 
     // Create edge vertices around the circle
@@ -51,6 +53,7 @@ pub fn create_circle(radius: f32, segments: usize, color: [f32; 3]) -> (Vec<Vert
         vertices.push(Vertex {
             position: [x,y, 0.0],
             color,
+            tex_coords,
         });
 
         // Add indices to form triangles (skip first edge)
