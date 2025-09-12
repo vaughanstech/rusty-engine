@@ -13,14 +13,16 @@ pub struct Vertex {
     pub position: [f32; 3], // x, y, z coordinates
     pub color: [f32; 3], // RGB color
     pub tex_coords: [f32; 2], // support for texture coordinates
+    pub normal: [f32; 3],
 }
 
 impl Vertex {
-    pub const ATTRIBS: [wgpu::VertexAttribute; 3] =
+    pub const ATTRIBS: [wgpu::VertexAttribute; 4] =
         wgpu::vertex_attr_array![
             0 => Float32x3, // position
             1 => Float32x3, // color
-            2 => Float32x2 // tex_coords
+            2 => Float32x2, // tex_coords
+            3 => Float32x3,
         ];
 
     pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {

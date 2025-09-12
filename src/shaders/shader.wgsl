@@ -14,11 +14,13 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) color: vec3<f32>,
     @location(2) tex_coords: vec2<f32>,
+    @location(3) normal: vec3<f32>,
 };
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec3<f32>,
     @location(1) tex_coords: vec2<f32>,
+    @location(2) normal: vec3<f32>,
 };
 
 // Vertex shader: takes position and passes it along
@@ -53,6 +55,7 @@ fn vs_main(
     out.clip_position = uniforms.mvp * vec4<f32>(in.position, 1.0);
     out.color = in.color;
     out.tex_coords = in.tex_coords;
+    out.normal = in.normal;
     return out;
 }
 

@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, renderable::{Material, Renderable}, shapes::{create_circle, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, renderable::{Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -241,7 +241,7 @@ impl State {
             cache: None,
         });
 
-        let (circle_vertices, circle_indices) = create_circle(0.4, 64, [0.0, 0.0, 1.0], [0.5, 0.5]);
+        // let (circle_vertices, circle_indices) = create_circle(0.4, 64, [0.0, 0.0, 1.0], [0.5, 0.5]);
 
         let start_time = std::time::Instant::now();
 
@@ -296,6 +296,12 @@ impl State {
             glam::vec3(0.0, 1.0, 0.0), // spin around Y
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
+
+        // let (circ_tex, circ_tex_bind_group) = texture::create_white_texture(
+        //     &device,
+        //     &queue,
+        //     &texture_bind_group_layout,
+        // );
         // let circle = Renderable::new(
         //     &device,
         //     &queue,
@@ -303,11 +309,31 @@ impl State {
         //     &uniform_bind_group_layout,
         //     &circle_vertices,
         //     Some(&circle_indices),
+        //     Material::Textured { bind_group: circ_tex_bind_group },
         //     glam::vec3(0.0, -1.0, 0.0), // position
         //     glam::vec3(1.0, 0.0, 0.0), // spin around X
         //     glam::vec3(1.0, 1.0, 1.0), // scale
         // );
-        let renderables = vec![triangle, square];
+
+        let (_white_tex, white_bind_group) = texture::create_white_texture(
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        );
+        let (sphere_vertices, sphere_indices) = shapes::create_sphere(1.0, 32, 16);
+        let sphere = Renderable::new(
+            &device,
+            &queue,
+            &render_pipeline,
+            &uniform_bind_group_layout,
+            &sphere_vertices,
+            Some(&sphere_indices),
+            Material::ColorOnly { bind_group: white_bind_group },
+            glam::vec3(0.0, -1.0, 0.0),
+            glam::vec3(1.0, 0.0, 0.0),
+            glam::vec3(1.0, 1.0, 1.0),
+        );
+        let renderables = vec![triangle, square, sphere];
 
         Self {
             surface,
