@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, renderable::{Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, renderable::{Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_INDICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -28,7 +28,6 @@ pub struct State {
     is_surface_configured: bool,
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
-    uniform_bind_group: wgpu::BindGroup,
     diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
     pub controller: Controller,
@@ -205,12 +204,27 @@ impl State {
             ],
             label: Some("Diffuse Bind Group"),
         });
+
+        // Material Bind Group
+        let material_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Material Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
         let controller = Controller::new(2.0, 0.5, 1.0);
 
         // 10. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout, &camera_bind_group_layout, &texture_bind_group_layout],
+            bind_group_layouts: &[&uniform_bind_group_layout, &camera_bind_group_layout, &texture_bind_group_layout, &material_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -271,8 +285,10 @@ impl State {
             &render_pipeline,
             &uniform_bind_group_layout,
             &TRIANGLE_VERTICES,
-            None,
-            Material::ColorOnly { bind_group: white_bind_group, },
+            &TRIANGLE_INDICES,
+            Some(white_bind_group),
+            &material_bind_group_layout,
+            true,
             glam::vec3(-1.0, 0.0, 0.0), // position in world
             glam::vec3(0.0, 0.0, 1.0), // spin around Z
             glam::vec3(1.0, 1.0, 1.0), // scale
@@ -290,8 +306,10 @@ impl State {
             &render_pipeline,
             &uniform_bind_group_layout,
             &SQUARE_VERTICES,
-            Some(&SQUARE_INDICES),
-            Material::Textured { bind_group: tex_bind_group },
+            &SQUARE_INDICES,
+            Some(tex_bind_group),
+            &material_bind_group_layout,
+            true,
             glam::vec3(1.0, 0.0, 0.0), // position
             glam::vec3(0.0, 1.0, 0.0), // spin around Y
             glam::vec3(1.0, 1.0, 1.0), // scale
@@ -327,8 +345,10 @@ impl State {
             &render_pipeline,
             &uniform_bind_group_layout,
             &sphere_vertices,
-            Some(&sphere_indices),
-            Material::ColorOnly { bind_group: white_bind_group },
+            &sphere_indices,
+            Some(white_bind_group),
+            &material_bind_group_layout,
+            true,
             glam::vec3(0.0, -1.0, 0.0),
             glam::vec3(1.0, 0.0, 0.0),
             glam::vec3(1.0, 1.0, 1.0),
@@ -344,7 +364,6 @@ impl State {
             is_surface_configured: false,
             window: window,
             render_pipeline,
-            uniform_bind_group,
             diffuse_bind_group,
             camera,
             camera_bind_group,
@@ -442,17 +461,30 @@ impl State {
                         timestamp_writes: None,
                     });
                     render_pass.set_pipeline(&self.render_pipeline);
-                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+                    // Bind camera once (group 1)
                     render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
                     render_pass.set_bind_group(2, &self.diffuse_bind_group, &[]);
                     
-                    for r in &self.renderables {
-                        match &r.material {
-                            Material::ColorOnly { bind_group } | Material::Textured { bind_group } => {
-                                render_pass.set_bind_group(0, bind_group, &[]);
-                            }
+                    // Draw each renderable
+                    for renderable in &self.renderables {
+                        // Per-object uniform (MVP matrix)
+                        render_pass.set_bind_group(0, &renderable.uniform_bind_group, &[]);
+
+                        // Optional texture
+                        if let Some(texture_bg) = &renderable.texture_bind_group {
+                            render_pass.set_bind_group(2, texture_bg, &[]);
                         }
-                        r.draw(&mut render_pass);
+
+                        // Material (always)
+                        render_pass.set_bind_group(3, &renderable.material.bind_group, &[]);
+
+                        // Buffers
+                        render_pass.set_vertex_buffer(0, renderable.vertex_buffer.slice(..));
+                        render_pass.set_index_buffer(renderable.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+                        // Draw
+                        render_pass.draw_indexed(0..renderable.num_indices, 0, 0..1);
                     }
                     // Render pass dropped here, finishing recording
                 }

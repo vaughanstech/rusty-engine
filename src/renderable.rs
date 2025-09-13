@@ -13,20 +13,24 @@ use crate::vertex::Vertex;
 use wgpu::util::DeviceExt;
 
 // Defining a material abstraction for renderables
-pub enum Material {
-    ColorOnly {
-        bind_group: wgpu::BindGroup,
-    },
-    Textured {
-        bind_group: wgpu::BindGroup,
-    },
+#[repr(C)] // ensures memory layout is C-compatible
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MaterialUniform {
+    pub use_texture: u32,
+    _padding: [u32; 3],
+}
+pub struct Material {
+    pub uniform: MaterialUniform,
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
 }
 
 #[allow(dead_code)]
 pub struct Renderable {
     pub vertex_buffer: wgpu::Buffer, // vertex data
-    pub index_buffer: Option<wgpu::Buffer>, // optional
+    pub index_buffer: wgpu::Buffer, // optional
     pub num_indices: u32, // counts for draw cells
+    pub texture_bind_group: Option<wgpu::BindGroup>, // None = no texture
     pub material: Material, // material abstraction
     pub uniform_buffer: wgpu::Buffer, // handles transform
     pub uniform_bind_group: wgpu::BindGroup, // handles transform
@@ -43,8 +47,10 @@ impl Renderable {
         _render_pipeline: &wgpu::RenderPipeline,
         uniform_bind_group_layout: &wgpu::BindGroupLayout,
         vertices: &[Vertex],
-        indices: Option<&[u16]>,
-        material: Material,
+        indices: &[u16],
+        texture_bind_group: Option<wgpu::BindGroup>,
+        material_layout: &wgpu::BindGroupLayout,
+        use_texture: bool,
         position: glam::Vec3,
         rotation_speed: glam::Vec3,
         scale: glam::Vec3,
@@ -57,16 +63,12 @@ impl Renderable {
         });
 
         // Index buffer (optional)
-        let (index_buffer, num_indices) = if let Some(idx) = indices {
-            let buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(idx),
+                contents: bytemuck::cast_slice(indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
-            (Some(buf), idx.len() as u32)
-        } else {
-            (None, vertices.len() as u32)
-        };
+        let num_indices = indices.iter().len();
 
         // Uniform buffer
         let uniforms = Uniforms::new();
@@ -86,10 +88,15 @@ impl Renderable {
             }],
         });
 
+        
+
+        let material = Self::create_material(device, material_layout, use_texture);
+
         Self {
             vertex_buffer,
             index_buffer,
-            num_indices,
+            num_indices: num_indices.try_into().unwrap(),
+            texture_bind_group,
             material,
             uniform_buffer,
             uniform_bind_group,
@@ -121,14 +128,45 @@ impl Renderable {
 
     // Issue draw call
     pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
-        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-        if let Some(index_buf) = &self.index_buffer {
-            render_pass.set_index_buffer(index_buf.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
-        } else {
-            render_pass.draw(0..self.num_indices, 0..1);
+        if let Some(texture_bg) = &self.texture_bind_group {
+            render_pass.set_bind_group(2, texture_bg, &[]);
         }
+        render_pass.set_bind_group(3, &self.material.bind_group, &[]);
     } 
+
+    pub fn create_material(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        use_texture: bool,
+    ) -> Material {
+        let uniform = MaterialUniform {
+            use_texture: if use_texture { 1 } else { 0 },
+            _padding: [0; 3],
+        };
+
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Material Buffer"),
+            contents: bytemuck::bytes_of(&uniform),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Material Bind Group"),
+            layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        Material {
+            uniform,
+            buffer,
+            bind_group,
+        }
+    }
+
 }

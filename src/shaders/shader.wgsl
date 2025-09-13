@@ -47,6 +47,13 @@ struct Camera {
 @group(1) @binding(0)
 var<uniform> camera: Camera;
 
+struct MaterialUniform {
+    use_texture: u32,
+}
+
+@group(3) @binding(0)
+var<uniform> material: MaterialUniform;
+
 @vertex
 fn vs_main(
     in: VertexInput
@@ -62,6 +69,13 @@ fn vs_main(
 // Fragment shader: takes color from vertex shader
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let tex_color = textureSample(myTexture, mySampler, in.tex_coords);
-    return tex_color * vec4(in.color, 1.0);
+    var final_color: vec3<f32>;
+
+    if (material.use_texture == 1u) {
+        let tex_color = textureSample(myTexture, mySampler, in.tex_coords).rgb;
+        final_color = tex_color;
+    } else {
+        final_color = in.color;
+    }
+    return vec4<f32>(final_color, 1.0);
 }
