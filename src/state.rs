@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, renderable::{Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_INDICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_INDICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -33,7 +33,10 @@ pub struct State {
     pub controller: Controller,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
+    camera_mvp_bind_group: wgpu::BindGroup,
+    light_buffer: wgpu::Buffer,
+    light_bind_group: wgpu::BindGroup,
+    light_bind_group_layout: wgpu::BindGroupLayout,
     last_frame: std::time::Instant,
     renderables: Vec<Renderable>,
     start_time: std::time::Instant,
@@ -107,27 +110,6 @@ impl State {
             contents: bytemuck::cast_slice(&[uniforms]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Uniform Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Uniform Bind Group"),
-            layout: &uniform_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
-        });
         // 9. Setup Camera uniform buffer and bind group
         let camera = Camera {
             eye: vec3(0.0, 0.0, 3.0), // camera position
@@ -146,26 +128,45 @@ impl State {
             contents: bytemuck::cast_slice(&[camera_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
+        let camera_mvp_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    
                 count: None,
-            }],
-            label: Some("Camera Bind Group Layout"),
+                },
+                    wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }
+            ],
+            label: Some("Camera + MVP Bind Group Layout"),
         });
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
+        let camera_mvp_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_mvp_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
                 binding: 0,
                 resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("Camera Bind Group"),
+                },
+                wgpu::BindGroupEntry {
+                binding: 1,
+                resource: uniform_buffer.as_entire_binding(),
+                }
+            ],
+            label: Some("Camera + MVP Bind Group"),
         });
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Text Bind Group Layout"),
@@ -208,23 +209,77 @@ impl State {
         // Material Bind Group
         let material_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Material Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Defining and binding a light source
+        let lights = Lights {
+            lights: [Light {
+                position: [2.0, 2.0, 2.0],
+                intensity: 1.0,
+                color: [1.0, 1.0, 1.0],
+                _padding: 0.0,
+            }; 16], // initializes array with same light
+            num_lights: 1,
+            _padding: [0; 3],
+        };
+        // Create GPU buffer for the light
+        let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Light Buffer"),
+            contents: bytemuck::bytes_of(&lights),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        // Bind group layout for lights
+        let light_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Light Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Light Bind Group"),
+            layout: &light_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: light_buffer.as_entire_binding(),
+            }]
         });
         let controller = Controller::new(2.0, 0.5, 1.0);
 
         // 10. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout, &camera_bind_group_layout, &texture_bind_group_layout, &material_bind_group_layout],
+            bind_group_layouts: &[&camera_mvp_bind_group_layout, &material_bind_group_layout, &texture_bind_group_layout, &light_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -286,9 +341,9 @@ impl State {
             &uniform_bind_group_layout,
             &TRIANGLE_VERTICES,
             &TRIANGLE_INDICES,
-            Some(white_bind_group),
+            None,
             &material_bind_group_layout,
-            true,
+            false,
             glam::vec3(-1.0, 0.0, 0.0), // position in world
             glam::vec3(0.0, 0.0, 1.0), // spin around Z
             glam::vec3(1.0, 1.0, 1.0), // scale
@@ -338,7 +393,7 @@ impl State {
             &queue,
             &texture_bind_group_layout,
         );
-        let (sphere_vertices, sphere_indices) = shapes::create_sphere(1.0, 32, 16);
+        let (sphere_vertices, sphere_indices) = shapes::create_sphere(1.0, 64, 32);
         let sphere = Renderable::new(
             &device,
             &queue,
@@ -346,9 +401,9 @@ impl State {
             &uniform_bind_group_layout,
             &sphere_vertices,
             &sphere_indices,
-            Some(white_bind_group),
+            None,
             &material_bind_group_layout,
-            true,
+            false,
             glam::vec3(0.0, -1.0, 0.0),
             glam::vec3(1.0, 0.0, 0.0),
             glam::vec3(1.0, 1.0, 1.0),
@@ -366,9 +421,12 @@ impl State {
             render_pipeline,
             diffuse_bind_group,
             camera,
-            camera_bind_group,
+            camera_mvp_bind_group,
             camera_buffer,
             camera_uniform,
+            light_buffer,
+            light_bind_group_layout,
+            light_bind_group,
             controller,
             last_frame: std::time::Instant::now(),
             renderables,
@@ -463,13 +521,13 @@ impl State {
                     render_pass.set_pipeline(&self.render_pipeline);
 
                     // Bind camera once (group 1)
-                    render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+                    render_pass.set_bind_group(0, &self.camera_mvp_bind_group, &[]);
                     render_pass.set_bind_group(2, &self.diffuse_bind_group, &[]);
                     
                     // Draw each renderable
                     for renderable in &self.renderables {
                         // Per-object uniform (MVP matrix)
-                        render_pass.set_bind_group(0, &renderable.uniform_bind_group, &[]);
+                        render_pass.set_bind_group(0, &self.camera_mvp_bind_group, &[]);
 
                         // Optional texture
                         if let Some(texture_bg) = &renderable.texture_bind_group {
@@ -477,7 +535,10 @@ impl State {
                         }
 
                         // Material (always)
-                        render_pass.set_bind_group(3, &renderable.material.bind_group, &[]);
+                        render_pass.set_bind_group(1, &renderable.material.bind_group, &[]);
+
+                        // Light source
+                        render_pass.set_bind_group(3, &self.light_bind_group, &[]);
 
                         // Buffers
                         render_pass.set_vertex_buffer(0, renderable.vertex_buffer.slice(..));

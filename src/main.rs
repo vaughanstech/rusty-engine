@@ -10,6 +10,7 @@ Responsibilities:
 mod app;
 mod camera;
 mod controller;
+mod light;
 mod texture;
 mod state;
 mod renderable;

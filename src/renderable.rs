@@ -17,7 +17,7 @@ use wgpu::util::DeviceExt;
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MaterialUniform {
     pub use_texture: u32,
-    _padding: [u32; 3],
+    _padding: [u32; 7],
 }
 pub struct Material {
     pub uniform: MaterialUniform,
@@ -144,7 +144,7 @@ impl Renderable {
     ) -> Material {
         let uniform = MaterialUniform {
             use_texture: if use_texture { 1 } else { 0 },
-            _padding: [0; 3],
+            _padding: [0; 7],
         };
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -156,10 +156,16 @@ impl Renderable {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Material Bind Group"),
             layout,
-            entries: &[wgpu::BindGroupEntry {
+            entries: &[
+                wgpu::BindGroupEntry {
                 binding: 0,
                 resource: buffer.as_entire_binding(),
-            }],
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: buffer.as_entire_binding(),
+                },
+            ],
         });
 
         Material {

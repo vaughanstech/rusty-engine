@@ -54,7 +54,7 @@ pub fn create_sphere(radius: f32, sectors: u32, stacks: u32) -> (Vec<Vertex>, Ve
 
             vertices.push(Vertex {
                 position: [x, y, z],
-                color: [1.0, 1.0, 1.0], // default white
+                color: [0.5, 0.5, 0.5], // default white
                 tex_coords: [u, v],
                 normal: [nx, ny, nz],
             });
