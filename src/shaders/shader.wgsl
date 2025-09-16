@@ -8,61 +8,46 @@ Responsibilites:
     - ex: The brain, runs directly on GPU, decides how stuff looks
 */
 
-// Group 0: Camera + MVP (per-frame)
-struct Uniforms {
-    mvp: mat4x4<f32>,
-};
-
+// Group 0: Camera (global)
 struct Camera {
     view_proj: mat4x4<f32>,
 };
+@group(0) @binding(0) var<uniform> camera: Camera;
 
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-@group(0) @binding(1)
-var<uniform> camera: Camera;
-
-// Group 1: Material (per-object)
+// Group 1: Per-object (model + material)
+struct Uniforms {
+    mvp: mat4x4<f32>,
+};
 struct MaterialUniform {
     use_texture: u32,
     _padding: vec3<u32>,
 };
+@group(1) @binding(0) var<uniform> uniforms: Uniforms;
+@group(1) @binding(1) var<uniform> material: MaterialUniform;
 
-@group(1) @binding(0)
-var<uniform> material: MaterialUniform;
+// Group 2: Texture + Sampler (per-object optional)
+@group(2) @binding(0) var myTexture: texture_2d<f32>;
+@group(2) @binding(1) var mySampler: sampler;
 
-// Group 2: Texture + Sampler (per-object, optional)
-@group(2) @binding(0)
-var myTexture: texture_2d<f32>;
-
-@group(2) @binding(1)
-var mySampler: sampler;
-
-// Group 3: Lights (per-frame)
+// Group 3: Lights (global)
 struct Light {
     position: vec3<f32>,
     intensity: f32,
     color: vec3<f32>,
     _padding: f32,
 };
-
 struct Lights {
     lights: array<Light, 16>,
     num_lights: u32,
 };
+@group(3) @binding(0) var<uniform> lights: Lights;
 
-@group(3) @binding(0)
-var<uniform> lights: Lights;
-
-// Vertex shader
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) color: vec3<f32>,
     @location(2) tex_coords: vec2<f32>,
     @location(3) normal: vec3<f32>,
 };
-
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec3<f32>,
@@ -74,11 +59,12 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = uniforms.mvp * vec4<f32>(in.position, 1.0);
+    let world_pos = uniforms.mvp * vec4<f32>(in.position, 1.0);
+    out.clip_position = camera.view_proj * world_pos;
+    out.world_pos = world_pos.xyz;
     out.color = in.color;
     out.tex_coords = in.tex_coords;
-    out.normal = in.normal;
-    out.world_pos = in.position; // used for lighting
+    out.normal = (uniforms.mvp * vec4<f32>(in.normal, 0.0)).xyz; // transform normal properly
     return out;
 }
 

@@ -9,23 +9,74 @@ Responsibilities:
 use crate::vertex::Vertex;
 
 pub const TRIANGLE_VERTICES: &[Vertex] = &[
-    Vertex {position: [0.0, 0.5, 0.0], color: [1.0, 0.0, 0.0], tex_coords: [0.5, 0.0], normal: [0.0, 0.0, 0.0]}, // top
-    Vertex {position: [-0.5, -0.5, 0.0], color: [0.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, 0.0]}, // bottom left
-    Vertex {position: [0.5, -0.5, 0.0], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, 0.0]}, // bottom right
+    // Apex (tip)
+    Vertex { position: [0.0, 1.0, 0.0], normal: [0.0, 1.0, 0.0], tex_coords: [0.5, 1.0], color: [1.0, 1.0, 1.0] },
+
+    // Base (square lying on XZ plane at y=0)
+    Vertex { position: [-0.5, 0.0, -0.5], normal: [0.0, 1.0, 0.0], tex_coords: [0.0, 0.0], color: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5, 0.0, -0.5], normal: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], color: [0.0, 1.0, 0.0] },
+    Vertex { position: [ 0.5, 0.0,  0.5], normal: [0.0, 1.0, 0.0], tex_coords: [1.0, 1.0], color: [0.0, 0.0, 1.0] },
+    Vertex { position: [-0.5, 0.0,  0.5], normal: [0.0, 1.0, 0.0], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 0.0] },
 ];
-pub const TRIANGLE_INDICES: &[u16] = &[0, 1, 2];
+
+#[rustfmt::skip]
+pub const TRIANGLE_INDICES: &[u16] = &[
+    // Base (two triangles)
+    1, 2, 3,
+    1, 3, 4,
+
+    // Sides (four triangles connecting apex)
+    0, 2, 1,  // front face
+    0, 3, 2,  // right face
+    0, 4, 3,  // back face
+    0, 1, 4,  // left face
+];
 
 pub const SQUARE_VERTICES: &[Vertex] = &[
-    Vertex {position: [-0.25, 0.25, 0.0], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, 0.0]}, // top left
-    Vertex {position: [0.25, 0.25, 0.0], color: [0.0, 1.0, 1.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, 0.0]}, // top right
-    Vertex {position: [0.25, -0.25, 0.0], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, 0.0]}, // bottom right
-    Vertex {position: [-0.25, -0.25, 0.0], color: [1.0, 0.5, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, 0.0]}, // bottom left
+    // Front face (+Z)
+    Vertex { position: [-0.5, -0.5,  0.5], color: [1.0, 0.0, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, 1.0] },
+    Vertex { position: [ 0.5, -0.5,  0.5], color: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, 1.0] },
+    Vertex { position: [ 0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, 1.0] },
+    Vertex { position: [-0.5,  0.5,  0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, 1.0] },
+
+    // Back face (-Z)
+    Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, -1.0] },
+    Vertex { position: [ 0.5, -0.5, -0.5], color: [0.0, 1.0, 1.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, -1.0] },
+    Vertex { position: [ 0.5,  0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, -1.0] },
+    Vertex { position: [-0.5,  0.5, -0.5], color: [1.0, 0.5, 0.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, -1.0] },
+
+    // Left face (-X)
+    Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.0, 0.0], tex_coords: [0.0, 0.0], normal: [-1.0, 0.0, 0.0] },
+    Vertex { position: [-0.5, -0.5,  0.5], color: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], normal: [-1.0, 0.0, 0.0] },
+    Vertex { position: [-0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [-1.0, 0.0, 0.0] },
+    Vertex { position: [-0.5,  0.5, -0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [-1.0, 0.0, 0.0] },
+
+    // Right face (+X)
+    Vertex { position: [ 0.5, -0.5, -0.5], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5, -0.5,  0.5], color: [0.0, 1.0, 1.0], tex_coords: [0.0, 0.0], normal: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5,  0.5,  0.5], color: [0.5, 0.5, 0.5], tex_coords: [0.0, 1.0], normal: [1.0, 0.0, 0.0] },
+    Vertex { position: [ 0.5,  0.5, -0.5], color: [1.0, 0.5, 0.0], tex_coords: [1.0, 1.0], normal: [1.0, 0.0, 0.0] },
+
+    // Top face (+Y)
+    Vertex { position: [-0.5,  0.5, -0.5], color: [0.0, 1.0, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 1.0, 0.0] },
+    Vertex { position: [-0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 1.0, 0.0] },
+    Vertex { position: [ 0.5,  0.5,  0.5], color: [1.0, 0.0, 0.0], tex_coords: [1.0, 1.0], normal: [0.0, 1.0, 0.0] },
+    Vertex { position: [ 0.5,  0.5, -0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 1.0, 0.0] },
+
+    // Bottom face (-Y)
+    Vertex { position: [-0.5, -0.5, -0.5], color: [0.0, 1.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, -1.0, 0.0] },
+    Vertex { position: [-0.5, -0.5,  0.5], color: [1.0, 0.0, 1.0], tex_coords: [0.0, 0.0], normal: [0.0, -1.0, 0.0] },
+    Vertex { position: [ 0.5, -0.5,  0.5], color: [1.0, 0.5, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, -1.0, 0.0] },
+    Vertex { position: [ 0.5, -0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [1.0, 1.0], normal: [0.0, -1.0, 0.0] },
 ];
 
-// Indices define which vertices make up triangles
 pub const SQUARE_INDICES: &[u16] = &[
-    0, 1, 2, // first triangle
-    0, 2, 3, // second triangle
+    0, 1, 2, 0, 2, 3,    // front
+    4, 5, 6, 4, 6, 7,    // back
+    8, 9, 10, 8, 10, 11, // left
+    12, 13, 14, 12, 14, 15, // right
+    16, 17, 18, 16, 18, 19, // top
+    20, 21, 22, 20, 22, 23, // bottom
 ];
 
 

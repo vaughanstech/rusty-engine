@@ -31,9 +31,9 @@ pub struct Renderable {
     pub index_buffer: wgpu::Buffer, // optional
     pub num_indices: u32, // counts for draw cells
     pub texture_bind_group: Option<wgpu::BindGroup>, // None = no texture
-    pub material: Material, // material abstraction
     pub uniform_buffer: wgpu::Buffer, // handles transform
-    pub uniform_bind_group: wgpu::BindGroup, // handles transform
+    pub material_buffer: wgpu::Buffer,
+    pub uniform_material_bind_group: wgpu::BindGroup, // handles transform
     pub position: glam::Vec3,
     pub rotation: glam::Vec3, // rotation in radians (x, y, z)
     pub rotation_speed: glam::Vec3, // how fast to rotate around each axis
@@ -45,7 +45,7 @@ impl Renderable {
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
         _render_pipeline: &wgpu::RenderPipeline,
-        uniform_bind_group_layout: &wgpu::BindGroupLayout,
+        uniform_material_bind_group_layout: &wgpu::BindGroupLayout,
         vertices: &[Vertex],
         indices: &[u16],
         texture_bind_group: Option<wgpu::BindGroup>,
@@ -79,27 +79,53 @@ impl Renderable {
         });
 
         // Uniform Bind group
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Uniform Buind Group"),
-            layout: uniform_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform_buffer.as_entire_binding(),
-            }],
+        // let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     label: Some("Uniform Buind Group"),
+        //     layout: uniform_bind_group_layout,
+        //     entries: &[wgpu::BindGroupEntry {
+        //         binding: 0,
+        //         resource: uniform_buffer.as_entire_binding(),
+        //     }],
+        // });
+
+        // Material Uniform Buffer
+        let material_uniform = MaterialUniform {
+            use_texture: if use_texture { 1 } else { 0 },
+            _padding: [0; 7],
+        };
+        let material_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Material Buffer"),
+            contents: bytemuck::bytes_of(&material_uniform),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let uniform_material_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Uniform + Material Bind Group"),
+            layout: &uniform_material_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: material_buffer.as_entire_binding(),
+                }
+            ]
         });
 
         
 
-        let material = Self::create_material(device, material_layout, use_texture);
+        // let material = Self::create_material(device, material_layout, use_texture);
 
         Self {
             vertex_buffer,
             index_buffer,
             num_indices: num_indices.try_into().unwrap(),
             texture_bind_group,
-            material,
             uniform_buffer,
-            uniform_bind_group,
+            material_buffer,
+            uniform_material_bind_group,
             position,
             rotation: glam::Vec3::ZERO, // start with no rotation
             rotation_speed,
@@ -123,7 +149,7 @@ impl Renderable {
         let mvp = view_proj * model;
         uniforms.update_model(mvp);
 
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[model.to_cols_array_2d()]));
     }
 
     // Issue draw call
@@ -134,45 +160,39 @@ impl Renderable {
         if let Some(texture_bg) = &self.texture_bind_group {
             render_pass.set_bind_group(2, texture_bg, &[]);
         }
-        render_pass.set_bind_group(3, &self.material.bind_group, &[]);
+        render_pass.set_bind_group(1, &self.uniform_material_bind_group, &[]);
     } 
 
-    pub fn create_material(
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        use_texture: bool,
-    ) -> Material {
-        let uniform = MaterialUniform {
-            use_texture: if use_texture { 1 } else { 0 },
-            _padding: [0; 7],
-        };
+    // pub fn create_material(
+    //     device: &wgpu::Device,
+    //     layout: &wgpu::BindGroupLayout,
+    //     use_texture: bool,
+    // ) -> Material {
+    //     let uniform = MaterialUniform {
+    //         use_texture: if use_texture { 1 } else { 0 },
+    //         _padding: [0; 3],
+    //     };
 
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Material Buffer"),
-            contents: bytemuck::bytes_of(&uniform),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+    //     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+    //         label: Some("Material Buffer"),
+    //         contents: bytemuck::bytes_of(&uniform),
+    //         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    //     });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Material Bind Group"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buffer.as_entire_binding(),
-                },
-            ],
-        });
+    //     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+    //         label: Some("Material Bind Group"),
+    //         layout,
+    //         entries: &[wgpu::BindGroupEntry {
+    //             binding: 0,
+    //             resource: buffer.as_entire_binding(),
+    //         }],
+    //     });
 
-        Material {
-            uniform,
-            buffer,
-            bind_group,
-        }
-    }
+    //     Material {
+    //         uniform,
+    //         buffer,
+    //         bind_group,
+    //     }
+    // }
 
 }
