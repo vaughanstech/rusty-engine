@@ -32,6 +32,7 @@ pub struct Renderable {
     pub num_indices: u32, // counts for draw cells
     pub texture_bind_group: Option<wgpu::BindGroup>, // None = no texture
     pub uniform_buffer: wgpu::Buffer, // handles transform
+    pub lit: bool, // bool to toggle lighting
     pub material_buffer: wgpu::Buffer,
     pub uniform_material_bind_group: wgpu::BindGroup, // handles transform
     pub position: glam::Vec3,
@@ -49,8 +50,8 @@ impl Renderable {
         vertices: &[Vertex],
         indices: &[u16],
         texture_bind_group: Option<wgpu::BindGroup>,
-        material_layout: &wgpu::BindGroupLayout,
         use_texture: bool,
+        start_lit: bool,
         position: glam::Vec3,
         rotation_speed: glam::Vec3,
         scale: glam::Vec3,
@@ -71,7 +72,11 @@ impl Renderable {
         let num_indices = indices.iter().len();
 
         // Uniform buffer
-        let uniforms = Uniforms::new();
+        let uniforms = Uniforms {
+            mvp: glam::Mat4::IDENTITY.to_cols_array_2d(),
+            lit: if start_lit { 1 } else { 0 },
+            _padding: [0; 3],
+        };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
@@ -129,7 +134,8 @@ impl Renderable {
             position,
             rotation: glam::Vec3::ZERO, // start with no rotation
             rotation_speed,
-            scale
+            scale,
+            lit: true,
         }
     }
 
@@ -148,6 +154,9 @@ impl Renderable {
         let model = self.model_matrix(time);
         let mvp = view_proj * model;
         uniforms.update_model(mvp);
+
+        // propagate lit toggle
+        uniforms.set_lit(self.lit);
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[model.to_cols_array_2d()]));
     }

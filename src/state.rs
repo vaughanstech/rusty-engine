@@ -116,7 +116,7 @@ impl State {
                 // binding 0: model uniform (mat4)
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -230,7 +230,7 @@ impl State {
                 color: [1.0, 1.0, 1.0],
                 _padding: 0.0,
             }; 16], // initializes array with same light
-            num_lights: 1,
+            num_lights: 5,
             _padding: [0; 3],
         };
         // Create GPU buffer for the light
@@ -331,8 +331,8 @@ impl State {
             &TRIANGLE_VERTICES,
             &TRIANGLE_INDICES,
             None,
-            &uniform_material_bind_group_layout,
             false,
+            true,
             glam::vec3(-5.0, 0.0, 0.0), // position in world
             glam::vec3(0.0, 1.0, 0.0), // spin around Z
             glam::vec3(1.0, 1.0, 1.0), // scale
@@ -357,7 +357,7 @@ impl State {
             &SQUARE_VERTICES,
             &SQUARE_INDICES,
             Some(grey_bind_group),
-            &uniform_material_bind_group_layout,
+            true,
             true,
             glam::vec3(5.0, 0.0, 0.0), // position
             glam::vec3(0.0, 1.0, 0.0), // spin around Y
@@ -401,7 +401,7 @@ impl State {
             &sphere_vertices,
             &sphere_indices,
             Some(grey_bind_group),
-            &uniform_material_bind_group_layout,
+            true,
             true,
             glam::vec3(0.0, 0.0, 0.0),
             glam::vec3(1.0, 0.0, 0.0),
