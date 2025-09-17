@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{self, Material, Renderable}, shapes::{self, create_cube, create_pyramid, create_sphere }, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform, Projection}, controller::Controller, light::{Light, Lights}, renderable::{self, Material, Renderable}, shapes::{self, create_cube, create_pyramid, create_sphere }, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -147,15 +147,9 @@ impl State {
         //     }],
         // });
         // 9. Setup Camera uniform buffer and bind group
-        let camera = Camera {
-            eye: vec3(0.0, 0.0, 3.0), // camera position
-            target: vec3(0.0, 0.0, 0.0), // looking at origin
-            up: glam::Vec3::Y, // "up" is +y
-            aspect: config.width as f32 / config.height as f32,
-            fov_y: 45.0f32.to_radians(),
-            z_near: 0.1,
-            z_far: 100.0,
-        };
+        let camera = Camera::new(
+            config.width as f32 / config.height as f32
+        );
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
