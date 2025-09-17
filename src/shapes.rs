@@ -8,77 +8,104 @@ Responsibilities:
 
 use crate::vertex::Vertex;
 
-pub const TRIANGLE_VERTICES: &[Vertex] = &[
-    // Apex (tip)
-    Vertex { position: [0.0, 1.0, 0.0], normal: [0.0, 1.0, 0.0], tex_coords: [0.5, 1.0], color: [1.0, 1.0, 1.0] },
+pub fn create_pyramid() -> (Vec<Vertex>, Vec<u16>) {
+    let mut vertices = vec![
+        // Base (y = 0, facing downward - normal = (0, -1, 0))
+        Vertex { position: [-0.5, 0.0, -0.5], normal: [0.0, -1.0, 0.0], tex_coords: [0.0, 0.0], color: [1.0, 0.0, 0.0] },
+        Vertex { position: [ 0.5, 0.0, -0.5], normal: [0.0, -1.0, 0.0], tex_coords: [1.0, 0.0], color: [0.0, 1.0, 0.0] },
+        Vertex { position: [ 0.5, 0.0,  0.5], normal: [0.0, -1.0, 0.0], tex_coords: [1.0, 1.0], color: [0.0, 0.0, 1.0] },
+        Vertex { position: [-0.5, 0.0,  0.5], normal: [0.0, -1.0, 0.0], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 0.0] },
 
-    // Base (square lying on XZ plane at y=0)
-    Vertex { position: [-0.5, 0.0, -0.5], normal: [0.0, 1.0, 0.0], tex_coords: [0.0, 0.0], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5, 0.0, -0.5], normal: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [ 0.5, 0.0,  0.5], normal: [0.0, 1.0, 0.0], tex_coords: [1.0, 1.0], color: [0.0, 0.0, 1.0] },
-    Vertex { position: [-0.5, 0.0,  0.5], normal: [0.0, 1.0, 0.0], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 0.0] },
-];
+        // Front face (apex + front base edge) -> normal points forward
+        Vertex { position: [0.0, 1.0, 0.0], normal: [0.0, 0.5, -0.866], tex_coords: [0.5, 1.0], color: [1.0, 1.0, 1.0] }, // apex
+        Vertex { position: [-0.5, 0.0, -0.5], normal: [0.0, 0.5, -0.866], tex_coords: [0.0, 0.0], color: [1.0, 0.0, 0.0] },
+        Vertex { position: [ 0.5, 0.0, -0.5], normal: [0.0, 0.5, -0.866], tex_coords: [1.0, 0.0], color: [0.0, 1.0, 0.0] },
 
-#[rustfmt::skip]
-pub const TRIANGLE_INDICES: &[u16] = &[
-    // Base (two triangles)
-    1, 2, 3,
-    1, 3, 4,
+        // Right face
+        Vertex { position: [0.0, 1.0, 0.0], normal: [0.866, 0.5, 0.0], tex_coords: [0.5, 1.0], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [0.5, 0.0, -0.5], normal: [0.866, 0.5, 0.0], tex_coords: [1.0, 0.0], color: [0.0, 1.0, 0.0] },
+        Vertex { position: [0.5, 0.0,  0.5], normal: [0.866, 0.5, 0.0], tex_coords: [1.0, 1.0], color: [0.0, 0.0, 1.0] },
 
-    // Sides (four triangles connecting apex)
-    0, 2, 1,  // front face
-    0, 3, 2,  // right face
-    0, 4, 3,  // back face
-    0, 1, 4,  // left face
-];
+        // Back face
+        Vertex { position: [0.0, 1.0, 0.0], normal: [0.0, 0.5, 0.866], tex_coords: [0.5, 1.0], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [0.5, 0.0, 0.5], normal: [0.0, 0.5, 0.866], tex_coords: [1.0, 1.0], color: [0.0, 0.0, 1.0] },
+        Vertex { position: [-0.5, 0.0, 0.5], normal: [0.0, 0.5, 0.866], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 0.0] },
 
-pub const SQUARE_VERTICES: &[Vertex] = &[
-    // Front face (+Z)
-    Vertex { position: [-0.5, -0.5,  0.5], color: [1.0, 0.0, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, 1.0] },
-    Vertex { position: [ 0.5, -0.5,  0.5], color: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, 1.0] },
-    Vertex { position: [ 0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, 1.0] },
-    Vertex { position: [-0.5,  0.5,  0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, 1.0] },
+        // Left face
+        Vertex { position: [0.0, 1.0, 0.0], normal: [-0.866, 0.5, 0.0], tex_coords: [0.5, 1.0], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [-0.5, 0.0, 0.5], normal: [-0.866, 0.5, 0.0], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 0.0] },
+        Vertex { position: [-0.5, 0.0, -0.5], normal: [-0.866, 0.5, 0.0], tex_coords: [0.0, 0.0], color: [1.0, 0.0, 0.0] },
+    ];
 
-    // Back face (-Z)
-    Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, -1.0] },
-    Vertex { position: [ 0.5, -0.5, -0.5], color: [0.0, 1.0, 1.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, -1.0] },
-    Vertex { position: [ 0.5,  0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, -1.0] },
-    Vertex { position: [-0.5,  0.5, -0.5], color: [1.0, 0.5, 0.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, -1.0] },
+    let indices: Vec<u16> = vec![
+        // Base
+        0, 1, 2,
+        0, 2, 3,
 
-    // Left face (-X)
-    Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.0, 0.0], tex_coords: [0.0, 0.0], normal: [-1.0, 0.0, 0.0] },
-    Vertex { position: [-0.5, -0.5,  0.5], color: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], normal: [-1.0, 0.0, 0.0] },
-    Vertex { position: [-0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [-1.0, 0.0, 0.0] },
-    Vertex { position: [-0.5,  0.5, -0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [-1.0, 0.0, 0.0] },
+        // Sides
+        4, 5, 6,   // front
+        7, 8, 9,   // right
+        10, 11, 12, // back
+        13, 14, 15, // left
+    ];
 
-    // Right face (+X)
-    Vertex { position: [ 0.5, -0.5, -0.5], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5, -0.5,  0.5], color: [0.0, 1.0, 1.0], tex_coords: [0.0, 0.0], normal: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5,  0.5], color: [0.5, 0.5, 0.5], tex_coords: [0.0, 1.0], normal: [1.0, 0.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5, -0.5], color: [1.0, 0.5, 0.0], tex_coords: [1.0, 1.0], normal: [1.0, 0.0, 0.0] },
+    Vertex::compute_normals(&mut vertices, &indices);
 
-    // Top face (+Y)
-    Vertex { position: [-0.5,  0.5, -0.5], color: [0.0, 1.0, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 1.0, 0.0] },
-    Vertex { position: [-0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 1.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5,  0.5], color: [1.0, 0.0, 0.0], tex_coords: [1.0, 1.0], normal: [0.0, 1.0, 0.0] },
-    Vertex { position: [ 0.5,  0.5, -0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 1.0, 0.0] },
+    (vertices, indices)
+}
 
-    // Bottom face (-Y)
-    Vertex { position: [-0.5, -0.5, -0.5], color: [0.0, 1.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, -1.0, 0.0] },
-    Vertex { position: [-0.5, -0.5,  0.5], color: [1.0, 0.0, 1.0], tex_coords: [0.0, 0.0], normal: [0.0, -1.0, 0.0] },
-    Vertex { position: [ 0.5, -0.5,  0.5], color: [1.0, 0.5, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, -1.0, 0.0] },
-    Vertex { position: [ 0.5, -0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [1.0, 1.0], normal: [0.0, -1.0, 0.0] },
-];
+pub fn create_cube() -> (Vec<Vertex>, Vec<u16>) {
+    let mut vertices = vec![
+        // Front face (+Z)
+        Vertex { position: [-0.5, -0.5,  0.5], color: [1.0, 0.0, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, 1.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], color: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, 1.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, 1.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, 1.0] },
 
-pub const SQUARE_INDICES: &[u16] = &[
-    0, 1, 2, 0, 2, 3,    // front
-    4, 5, 6, 4, 6, 7,    // back
-    8, 9, 10, 8, 10, 11, // left
-    12, 13, 14, 12, 14, 15, // right
-    16, 17, 18, 16, 18, 19, // top
-    20, 21, 22, 20, 22, 23, // bottom
-];
+        // Back face (-Z)
+        Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 0.0, -1.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], color: [0.0, 1.0, 1.0], tex_coords: [0.0, 0.0], normal: [0.0, 0.0, -1.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [0.0, 1.0], normal: [0.0, 0.0, -1.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], color: [1.0, 0.5, 0.0], tex_coords: [1.0, 1.0], normal: [0.0, 0.0, -1.0] },
 
+        // Left face (-X)
+        Vertex { position: [-0.5, -0.5, -0.5], color: [1.0, 0.0, 0.0], tex_coords: [0.0, 0.0], normal: [-1.0, 0.0, 0.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], color: [0.0, 1.0, 0.0], tex_coords: [1.0, 0.0], normal: [-1.0, 0.0, 0.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 1.0], normal: [-1.0, 0.0, 0.0] },
+        Vertex { position: [-0.5,  0.5, -0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [-1.0, 0.0, 0.0] },
+
+        // Right face (+X)
+        Vertex { position: [ 0.5, -0.5, -0.5], color: [1.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [1.0, 0.0, 0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], color: [0.0, 1.0, 1.0], tex_coords: [0.0, 0.0], normal: [1.0, 0.0, 0.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], color: [0.5, 0.5, 0.5], tex_coords: [0.0, 1.0], normal: [1.0, 0.0, 0.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], color: [1.0, 0.5, 0.0], tex_coords: [1.0, 1.0], normal: [1.0, 0.0, 0.0] },
+
+        // Top face (+Y)
+        Vertex { position: [-0.5,  0.5, -0.5], color: [0.0, 1.0, 0.0], tex_coords: [0.0, 0.0], normal: [0.0, 1.0, 0.0] },
+        Vertex { position: [-0.5,  0.5,  0.5], color: [0.0, 0.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, 1.0, 0.0] },
+        Vertex { position: [ 0.5,  0.5,  0.5], color: [1.0, 0.0, 0.0], tex_coords: [1.0, 1.0], normal: [0.0, 1.0, 0.0] },
+        Vertex { position: [ 0.5,  0.5, -0.5], color: [1.0, 1.0, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, 1.0, 0.0] },
+
+        // Bottom face (-Y)
+        Vertex { position: [-0.5, -0.5, -0.5], color: [0.0, 1.0, 1.0], tex_coords: [1.0, 0.0], normal: [0.0, -1.0, 0.0] },
+        Vertex { position: [-0.5, -0.5,  0.5], color: [1.0, 0.0, 1.0], tex_coords: [0.0, 0.0], normal: [0.0, -1.0, 0.0] },
+        Vertex { position: [ 0.5, -0.5,  0.5], color: [1.0, 0.5, 0.0], tex_coords: [0.0, 1.0], normal: [0.0, -1.0, 0.0] },
+        Vertex { position: [ 0.5, -0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [1.0, 1.0], normal: [0.0, -1.0, 0.0] },
+    ];
+
+    let mut indices = vec![
+        0, 1, 2, 0, 2, 3,    // front
+        4, 5, 6, 4, 6, 7,    // back
+        8, 9, 10, 8, 10, 11, // left
+        12, 13, 14, 12, 14, 15, // right
+        16, 17, 18, 16, 18, 19, // top
+        20, 21, 22, 20, 22, 23, // bottom
+    ];
+
+    Vertex::compute_normals(&mut vertices, &indices);
+
+    (vertices, indices)
+}
 
 pub fn create_sphere(radius: f32, sectors: u32, stacks: u32) -> (Vec<Vertex>, Vec<u16>) {
     let mut vertices = Vec::new();

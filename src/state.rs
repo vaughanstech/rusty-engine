@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{self, Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_INDICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{self, Material, Renderable}, shapes::{self, create_cube, create_pyramid, create_sphere }, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -323,14 +323,15 @@ impl State {
             &queue,
             &texture_bind_group_layout,
         );
+        let (pyramid_vertices, pyramid_indices) = create_pyramid();
         // Create triangle, square, circle
-        let triangle = Renderable::new(
+        let pyramid = Renderable::new(
             &device,
             &queue,
             &render_pipeline,
             &uniform_material_bind_group_layout,
-            &TRIANGLE_VERTICES,
-            &TRIANGLE_INDICES,
+            &pyramid_vertices,
+            &pyramid_indices,
             None,
             false,
             true,
@@ -338,8 +339,8 @@ impl State {
             0.0,
             [1.0, 1.0, 1.0],
             glam::vec3(-2.5, 0.0, 0.0), // position in world
-            glam::vec3(0.0, 1.0, 0.0), // spin around Z
-            glam::vec3(1.0, 1.0, 1.0), // scale
+            glam::vec3(0.0, 0.0, 0.0), // spin around Z
+            glam::vec3(2.0, 2.0, 2.0), // scale
         );
 
         let (texture, tex_bind_group) = texture::load_texture(
@@ -353,13 +354,14 @@ impl State {
             &queue,
             &texture_bind_group_layout,
         );
-        let square = Renderable::new(
+        let (cube_vertices, cube_indices) = create_cube();
+        let cube = Renderable::new(
             &device,
             &queue,
             &render_pipeline,
             &uniform_material_bind_group_layout,
-            &SQUARE_VERTICES,
-            &SQUARE_INDICES,
+            &cube_vertices,
+            &cube_indices,
             Some(grey_bind_group),
             true,
             true,
@@ -367,7 +369,7 @@ impl State {
             0.0,
             [1.0, 1.0, 1.0],
             glam::vec3(2.5, 0.0, 0.0), // position
-            glam::vec3(0.0, 1.0, 0.0), // spin around Y
+            glam::vec3(0.0, 0.0, 0.0), // spin around Y
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
 
@@ -411,13 +413,13 @@ impl State {
             true,
             true,
             true,
-            50.0,
+            10.0,
             [1.0, 1.0, 1.0],
             glam::vec3(0.0, 0.0, 0.0),
-            glam::vec3(1.0, 0.0, 0.0),
+            glam::vec3(0.0, 0.0, 0.0),
             glam::vec3(1.0, 1.0, 1.0),
         );
-        let renderables = vec![triangle, square, sphere];
+        let renderables = vec![pyramid, cube, sphere];
 
         Self {
             surface,
