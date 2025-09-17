@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_INDICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{self, Material, Renderable}, shapes::{self, create_sphere, SQUARE_INDICES, SQUARE_VERTICES, TRIANGLE_INDICES, TRIANGLE_VERTICES}, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
 };
 use std::sync::Arc;
 use glam::vec3;
@@ -34,6 +34,7 @@ pub struct State {
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    lights: Lights,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_bind_group_layout: wgpu::BindGroupLayout,
@@ -226,7 +227,7 @@ impl State {
         let lights = Lights {
             lights: [Light {
                 position: [2.0, 2.0, 2.0],
-                intensity: 1.0,
+                intensity: 0.0,
                 color: [1.0, 1.0, 1.0],
                 _padding: 0.0,
             }; 16], // initializes array with same light
@@ -333,7 +334,10 @@ impl State {
             None,
             false,
             true,
-            glam::vec3(-5.0, 0.0, 0.0), // position in world
+            false,
+            0.0,
+            [1.0, 1.0, 1.0],
+            glam::vec3(-2.5, 0.0, 0.0), // position in world
             glam::vec3(0.0, 1.0, 0.0), // spin around Z
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
@@ -359,7 +363,10 @@ impl State {
             Some(grey_bind_group),
             true,
             true,
-            glam::vec3(5.0, 0.0, 0.0), // position
+            false,
+            0.0,
+            [1.0, 1.0, 1.0],
+            glam::vec3(2.5, 0.0, 0.0), // position
             glam::vec3(0.0, 1.0, 0.0), // spin around Y
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
@@ -403,6 +410,9 @@ impl State {
             Some(grey_bind_group),
             true,
             true,
+            true,
+            50.0,
+            [1.0, 1.0, 1.0],
             glam::vec3(0.0, 0.0, 0.0),
             glam::vec3(1.0, 0.0, 0.0),
             glam::vec3(1.0, 1.0, 1.0),
@@ -423,6 +433,7 @@ impl State {
             camera_bind_group,
             camera_buffer,
             camera_uniform,
+            lights,
             light_buffer,
             light_bind_group_layout,
             light_bind_group,
@@ -477,6 +488,42 @@ impl State {
         for r in &mut self.renderables {
             r.update(&self.queue, time, view_proj);
         }
+    }
+
+    pub fn update_lights(&mut self, time: f32) {
+        let mut active_lights = Vec::new();
+
+        // Global light
+        active_lights.push(Light {
+            position: [10.0, 10.0, 10.0],
+            color: [1.0, 1.0, 1.0],
+            intensity: 0.0,
+            _padding: 0.0,
+        });
+
+        // Add emissive objects
+        for renderable in &self.renderables {
+            if renderable.start_emission {
+                let model = renderable.model_matrix(time);
+                let world_pos = model.transform_point3(glam::Vec3::ZERO);
+                active_lights.push(Light {
+                    position: [world_pos.x, world_pos.y, world_pos.z],
+                    color: renderable.color,
+                    intensity: renderable.emissive_strength,
+                    _padding: 0.0,
+                });
+            }
+        }
+
+        // CAP to MAX_LIGHTS
+        let light_count = active_lights.len().min(16);
+        self.lights.num_lights = light_count as u32;
+        for (i, l) in active_lights.iter().take(16).enumerate() {
+            self.lights.lights[i] = *l;
+        }
+
+        // Push to GPU
+        self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.lights]));
     }
 
     // Render a single frame (clear screen to a color)

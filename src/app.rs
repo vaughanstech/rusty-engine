@@ -85,8 +85,10 @@ impl ApplicationHandler for App {
                 }
                 WindowEvent::RedrawRequested => {
                     if let Some(state) = self.state.as_mut() {
+                        let time = std::time::Instant::now();
                         state.window().request_redraw();
                         state.update();
+                        state.update_lights(time.elapsed().as_secs_f32());
                         match state.render() {
                             Ok(_) => {}
                             // Reconfigure the surface if it's lost or outdated

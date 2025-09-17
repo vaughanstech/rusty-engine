@@ -18,6 +18,9 @@ struct Camera {
 struct Uniforms {
     mvp: mat4x4<f32>,
     lit: u32,
+    emissive: u32,
+    emissive_strength: f32,
+    _padding: vec3<f32>,
 };
 struct MaterialUniform {
     use_texture: u32,
@@ -82,22 +85,26 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         base_color = in.color;
     }
 
-    // Decide if we apply lighting or not
-    if (uniforms.lit == 1u) {
-        var lit_color = vec3<f32>(0.0);
-
-        // Accumulate all lights
-        for (var i = 0u; i < lights.num_lights; i++) {
-            let light = lights.lights[i];
-            let light_dir = normalize(light.position - in.world_pos);
-            let diffuse = max(dot(in.normal, light_dir), 0.0);
-            lit_color += diffuse * light.color * light.intensity;
-        }
-
-        return vec4<f32>(base_color * lit_color, 1.0);
-    } else {
-        // unlit = just return base color
+    if (uniforms.lit == 0u) {
         return vec4<f32>(base_color, 1.0);
     }
+
+    // Apply lighting
+    var lit_color = vec3<f32>(0.0);
+
+    // Accumulate all lights
+    for (var i = 0u; i < lights.num_lights; i++) {
+        let light = lights.lights[i];
+        let light_dir = normalize(light.position - in.world_pos);
+        let diffuse = max(dot(in.normal, light_dir), 0.0);
+        lit_color += diffuse * light.color * light.intensity;
+    }
+
+    // add emission if enabled
+    if (uniforms.emissive == 1u) {
+        lit_color += base_color * uniforms.emissive_strength;
+    }
+
+    return vec4<f32>(base_color * lit_color, 1.0);
     
 }

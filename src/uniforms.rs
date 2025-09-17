@@ -12,7 +12,10 @@ Responsibilities:
 pub struct Uniforms {
     pub mvp: [[f32; 4]; 4],
     pub lit: u32, // 1 = apply lighting, 0 = skip
-    pub _padding: [u32; 3],
+    pub emissive: u32, // 1 = apply light emission, 0 = skip
+    pub emissive_strength: f32,
+    pub color: [f32; 3],
+    pub _padding: [u32; 5],
 }
 
 impl Uniforms {
@@ -20,15 +23,14 @@ impl Uniforms {
         Self {
             mvp: glam::Mat4::IDENTITY.to_cols_array_2d(),
             lit: 1,
-            _padding: [0; 3],
+            emissive: 0,
+            emissive_strength: 0.0,
+            color: [0.0, 0.0, 0.0],
+            _padding: [0; 5],
         }
     }
 
     pub fn update_model(&mut self, mvp: glam::Mat4) {
         self.mvp = mvp.to_cols_array_2d();
-    }
-
-    pub fn set_lit(&mut self, lit: bool) {
-        self.lit = if lit { 1 } else { 0 };
     }
 }

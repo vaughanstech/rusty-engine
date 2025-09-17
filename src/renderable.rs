@@ -7,7 +7,7 @@ Responsibilities:
     - Implement draw() (set buffers and issue draw call)
 */
 
-use crate::renderable;
+use crate::{renderable, uniforms};
 use crate::uniforms::{Uniforms};
 use crate::vertex::Vertex;
 use wgpu::util::DeviceExt;
@@ -32,13 +32,16 @@ pub struct Renderable {
     pub num_indices: u32, // counts for draw cells
     pub texture_bind_group: Option<wgpu::BindGroup>, // None = no texture
     pub uniform_buffer: wgpu::Buffer, // handles transform
-    pub lit: bool, // bool to toggle lighting
     pub material_buffer: wgpu::Buffer,
     pub uniform_material_bind_group: wgpu::BindGroup, // handles transform
     pub position: glam::Vec3,
     pub rotation: glam::Vec3, // rotation in radians (x, y, z)
     pub rotation_speed: glam::Vec3, // how fast to rotate around each axis
     pub scale: glam::Vec3,
+    pub start_lit: bool,
+    pub start_emission: bool,
+    pub emissive_strength: f32,
+    pub color: [f32; 3],
 }
 
 impl Renderable {
@@ -52,6 +55,9 @@ impl Renderable {
         texture_bind_group: Option<wgpu::BindGroup>,
         use_texture: bool,
         start_lit: bool,
+        start_emission: bool,
+        emissive_strength: f32,
+        color: [f32; 3],
         position: glam::Vec3,
         rotation_speed: glam::Vec3,
         scale: glam::Vec3,
@@ -75,7 +81,10 @@ impl Renderable {
         let uniforms = Uniforms {
             mvp: glam::Mat4::IDENTITY.to_cols_array_2d(),
             lit: if start_lit { 1 } else { 0 },
-            _padding: [0; 3],
+            emissive: if start_emission { 1 } else { 0 },
+            emissive_strength: emissive_strength,
+            color: color,
+            _padding: [0; 5],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
@@ -135,7 +144,10 @@ impl Renderable {
             rotation: glam::Vec3::ZERO, // start with no rotation
             rotation_speed,
             scale,
-            lit: true,
+            start_lit,
+            start_emission,
+            emissive_strength,
+            color,
         }
     }
 
@@ -150,13 +162,16 @@ impl Renderable {
 
     // Update uniforms per frame
     pub fn update(&self, queue: &wgpu::Queue, time: f32, view_proj: glam::Mat4) {
-        let mut uniforms = Uniforms::new();
         let model = self.model_matrix(time);
         let mvp = view_proj * model;
-        uniforms.update_model(mvp);
-
-        // propagate lit toggle
-        uniforms.set_lit(self.lit);
+        let uniforms = Uniforms {
+            mvp: mvp.to_cols_array_2d(),
+            lit: if self.start_lit { 1 } else { 0 },
+            emissive: if self.start_emission { 1 } else { 0 },
+            emissive_strength: self.emissive_strength,
+            color: self.color,
+            _padding: [0; 5],
+        };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[model.to_cols_array_2d()]));
     }
