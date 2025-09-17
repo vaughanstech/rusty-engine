@@ -47,7 +47,6 @@ impl Vertex {
 
             let p0 = Vec3::from(vertices[i0].position);
             let p1 = Vec3::from(vertices[i1].position);
-            let p2 = Vec3::from(vertices[i2].position);
 
             let face_normal = Vec3::from(p1 - p0).normalize();
 

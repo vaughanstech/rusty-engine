@@ -43,7 +43,7 @@ pub struct Camera {
     pub z_near: f32,
     pub z_far: f32,
     pub projection: Projection,
-    pub ortho_scale: f32,
+    pub _ortho_scale: f32,
 }
 
 impl Camera {
@@ -57,35 +57,35 @@ impl Camera {
             z_near: 0.1,
             z_far: 100.0,
             projection: Projection::Orthographic, // default
-            ortho_scale: 100.0,
+            _ortho_scale: 100.0,
         }
     }
-    pub fn build_view_projection_matrix(&self) -> Mat4 {
-        // LookAt matrix
-        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
+    // pub fn build_view_projection_matrix(&self) -> Mat4 {
+    //     // LookAt matrix
+    //     let view = Mat4::look_at_rh(self.eye, self.target, self.up);
 
-        let proj = match self.projection {
-            Projection::Perspective => Mat4::perspective_rh_gl(
-                self.fov_y,
-                self.aspect,
-                self.z_near,
-                self.z_far,
-            ),
-            Projection::Orthographic => {
-                let ortho_scale = self.ortho_scale; //zoom level
-                Mat4::orthographic_rh_gl(
-                    -self.aspect * ortho_scale,
-                    self.aspect * ortho_scale,
-                    -ortho_scale,
-                    ortho_scale,
-                    self.z_near,
-                    self.z_far,
-                )
-            }
-        };
+    //     let proj = match self.projection {
+    //         Projection::Perspective => Mat4::perspective_rh_gl(
+    //             self.fov_y,
+    //             self.aspect,
+    //             self.z_near,
+    //             self.z_far,
+    //         ),
+    //         Projection::Orthographic => {
+    //             let ortho_scale = self.ortho_scale; //zoom level
+    //             Mat4::orthographic_rh_gl(
+    //                 -self.aspect * ortho_scale,
+    //                 self.aspect * ortho_scale,
+    //                 -ortho_scale,
+    //                 ortho_scale,
+    //                 self.z_near,
+    //                 self.z_far,
+    //             )
+    //         }
+    //     };
 
-        proj * view
-    }
+    //     proj * view
+    // }
 
     pub fn toggle_projection(&mut self) {
         self.projection = match self.projection {

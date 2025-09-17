@@ -7,7 +7,6 @@ Responsibilities:
     - Implement draw() (set buffers and issue draw call)
 */
 
-use crate::{renderable, uniforms};
 use crate::uniforms::{Uniforms};
 use crate::vertex::Vertex;
 use wgpu::util::DeviceExt;
@@ -18,11 +17,6 @@ use wgpu::util::DeviceExt;
 pub struct MaterialUniform {
     pub use_texture: u32,
     _padding: [u32; 7],
-}
-pub struct Material {
-    pub uniform: MaterialUniform,
-    pub buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
 }
 
 #[allow(dead_code)]
@@ -161,31 +155,11 @@ impl Renderable {
     }
 
     // Update uniforms per frame
-    pub fn update(&self, queue: &wgpu::Queue, time: f32, view_proj: glam::Mat4) {
+    pub fn update(&self, queue: &wgpu::Queue, time: f32) {
         let model = self.model_matrix(time);
-        let mvp = view_proj * model;
-        let uniforms = Uniforms {
-            mvp: mvp.to_cols_array_2d(),
-            lit: if self.start_lit { 1 } else { 0 },
-            emissive: if self.start_emission { 1 } else { 0 },
-            emissive_strength: self.emissive_strength,
-            color: self.color,
-            _padding: [0; 5],
-        };
 
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[model.to_cols_array_2d()]));
     }
-
-    // Issue draw call
-    pub fn draw<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-        if let Some(texture_bg) = &self.texture_bind_group {
-            render_pass.set_bind_group(2, texture_bg, &[]);
-        }
-        render_pass.set_bind_group(1, &self.uniform_material_bind_group, &[]);
-    } 
 
     // pub fn create_material(
     //     device: &wgpu::Device,

@@ -18,19 +18,19 @@ pub struct Uniforms {
     pub _padding: [u32; 5],
 }
 
-impl Uniforms {
-    pub fn new() -> Self {
-        Self {
-            mvp: glam::Mat4::IDENTITY.to_cols_array_2d(),
-            lit: 1,
-            emissive: 0,
-            emissive_strength: 0.0,
-            color: [0.0, 0.0, 0.0],
-            _padding: [0; 5],
-        }
-    }
+// impl Uniforms {
+//     pub fn new() -> Self {
+//         Self {
+//             mvp: glam::Mat4::IDENTITY.to_cols_array_2d(),
+//             lit: 1,
+//             emissive: 0,
+//             emissive_strength: 0.0,
+//             color: [0.0, 0.0, 0.0],
+//             _padding: [0; 5],
+//         }
+//     }
 
-    pub fn update_model(&mut self, mvp: glam::Mat4) {
-        self.mvp = mvp.to_cols_array_2d();
-    }
-}
+//     pub fn update_model(&mut self, mvp: glam::Mat4) {
+//         self.mvp = mvp.to_cols_array_2d();
+//     }
+// }

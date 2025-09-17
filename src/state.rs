@@ -9,10 +9,9 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform, Projection}, controller::Controller, light::{Light, Lights}, renderable::{self, Material, Renderable}, shapes::{self, create_cube, create_pyramid, create_sphere }, texture::{self, Texture}, uniforms::Uniforms, vertex::Vertex
+    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{Renderable}, shapes::{self, create_cube, create_pyramid }, texture::{self, Texture}, vertex::Vertex
 };
 use std::sync::Arc;
-use glam::vec3;
 use wgpu::util::DeviceExt;
 use winit::{event_loop::ActiveEventLoop, keyboard::{KeyCode}};
 use winit::event::WindowEvent;
@@ -37,7 +36,6 @@ pub struct State {
     lights: Lights,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
-    light_bind_group_layout: wgpu::BindGroupLayout,
     last_frame: std::time::Instant,
     renderables: Vec<Renderable>,
     start_time: std::time::Instant,
@@ -104,13 +102,6 @@ impl State {
         });
 
         // 8. Create uniform buffer and bind group
-        let uniforms = Uniforms::new();
-        // Creates block of GPU memory that holds your transformation matrix
-        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[uniforms]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
         let uniform_material_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Uniform Bind Group Layout"),
             entries: &[
@@ -298,21 +289,7 @@ impl State {
 
         let start_time = std::time::Instant::now();
 
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Uniform Bind Group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None
-                },
-                count: None,
-            }],
-        });
-
-        let (_white_tex, white_bind_group) = texture::create_white_texture(
+        let (_white_tex, _white_bind_group) = texture::create_white_texture(
             &device,
             &queue,
             &texture_bind_group_layout,
@@ -337,13 +314,13 @@ impl State {
             glam::vec3(2.0, 2.0, 2.0), // scale
         );
 
-        let (texture, tex_bind_group) = texture::load_texture(
+        let (_texture, _tex_bind_group) = texture::load_texture(
             &device,
             &queue,
             &texture_bind_group_layout,
             r"src\happy_tree.png",
         ).expect("Failed to load texture");
-        let (grey_tex, grey_bind_group) = texture::create_grey_texture(
+        let (_grey_tex, grey_bind_group) = texture::create_grey_texture(
             &device,
             &queue,
             &texture_bind_group_layout,
@@ -385,7 +362,7 @@ impl State {
         //     glam::vec3(1.0, 1.0, 1.0), // scale
         // );
 
-        let (_white_tex, white_bind_group) = texture::create_white_texture(
+        let (_white_tex, _white_bind_group) = texture::create_white_texture(
             &device,
             &queue,
             &texture_bind_group_layout,
@@ -431,7 +408,6 @@ impl State {
             camera_uniform,
             lights,
             light_buffer,
-            light_bind_group_layout,
             light_bind_group,
             controller,
             last_frame: std::time::Instant::now(),
@@ -472,7 +448,6 @@ impl State {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32();
         self.last_frame = now;
-        let view_proj = self.camera.build_view_projection_matrix().into();
 
         self.controller.update_camera(&mut self.camera, dt);
 
@@ -482,7 +457,7 @@ impl State {
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
         
         for r in &mut self.renderables {
-            r.update(&self.queue, time, view_proj);
+            r.update(&self.queue, time);
         }
     }
 

@@ -93,7 +93,7 @@ pub fn create_cube() -> (Vec<Vertex>, Vec<u16>) {
         Vertex { position: [ 0.5, -0.5, -0.5], color: [0.5, 0.5, 0.5], tex_coords: [1.0, 1.0], normal: [0.0, -1.0, 0.0] },
     ];
 
-    let mut indices = vec![
+    let indices = vec![
         0, 1, 2, 0, 2, 3,    // front
         4, 5, 6, 4, 6, 7,    // back
         8, 9, 10, 8, 10, 11, // left

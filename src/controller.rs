@@ -17,7 +17,6 @@ pub struct Controller {
 
     yaw: f32,
     pitch: f32,
-    last_mouse_position: Option<(f64, f64)>,
     mouse_pressed: bool,
     scroll: f32,
 }
@@ -37,7 +36,6 @@ impl Controller {
             p_pressed: false,
             yaw: -90.0, // facing -Z by default
             pitch: 0.0,
-            last_mouse_position: None,
             mouse_pressed: false,
             scroll: 0.0
         }
