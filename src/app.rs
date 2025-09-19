@@ -43,11 +43,6 @@ impl ApplicationHandler for App {
             _window_id: winit::window::WindowId,
             event: WindowEvent,
         ) {
-            if let Some(state) = self.state.as_mut() {
-                if state.input(&event) {
-                    return;
-                }
-            };
 
             match event {
                 WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
@@ -112,22 +107,20 @@ impl ApplicationHandler for App {
                         state.resize(physical_size);
                     }
                 }
-                _ => {
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(code),
+                            state: key_state,
+                            ..
+                        },
+                    ..
+                } => {
                     if let Some(state) = self.state.as_mut() {
-                        state.controller.process_events(&event);
+                        state.handle_key(event_loop, code, key_state.is_pressed());
                     }
                 }
+                _ => {}
             }
-    }
-
-    fn device_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        _device_id: winit::event::DeviceId,
-        event: DeviceEvent,
-    ) {
-        if let Some(state) = self.state.as_mut() {
-            state.controller.process_device_event(&event);
-        }
     }
 }

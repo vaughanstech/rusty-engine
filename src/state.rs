@@ -9,7 +9,7 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform}, controller::Controller, light::{Light, Lights}, renderable::{Renderable}, shapes::{self, create_cube, create_pyramid }, texture::{self, Texture}, vertex::Vertex
+    camera::{Camera, CameraUniform, Controller}, light::{Light, Lights}, renderable::Renderable, shapes::{self, create_cube, create_pyramid }, texture::{self, Texture}, vertex::Vertex
 };
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -138,9 +138,16 @@ impl State {
         //     }],
         // });
         // 9. Setup Camera uniform buffer and bind group
-        let camera = Camera::new(
-            config.width as f32 / config.height as f32
-        );
+        let camera = Camera {
+            eye: (0.0, 5.0, 10.0).into(),
+            target: (0.0, 0.0, 0.0).into(),
+            up: cgmath::Vector3::unit_y(),
+            aspect: config.width as f32 / config.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+        let controller = Controller::new(0.2);
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
@@ -249,7 +256,6 @@ impl State {
                 resource: light_buffer.as_entire_binding(),
             }]
         });
-        let controller = Controller::new(2.0, 0.5, 1.0);
 
         // 10. Define pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -429,10 +435,11 @@ impl State {
     }
 
     // This is where we'll handle keyboard events
-    fn _handle_key(&self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        match (code, is_pressed) {
-            (KeyCode::Escape, true) => event_loop.exit(),
-            _ => {}
+    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
+        if code == KeyCode::Escape && is_pressed {
+            event_loop.exit();
+        } else {
+            self.controller.handle_key(code, is_pressed);
         }
     }
 
@@ -440,16 +447,16 @@ impl State {
         self.window.as_ref()
     }
 
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
-        self.controller.process_events(event)
-    }
+    // pub fn input(&mut self, event: &WindowEvent) -> bool {
+    //     self.controller.process_events(event)
+    // }
 
     pub fn update(&mut self) {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32();
         self.last_frame = now;
 
-        self.controller.update_camera(&mut self.camera, dt);
+        self.controller.update_camera(&mut self.camera);
 
         let time = self.start_time.elapsed().as_secs_f32();
 

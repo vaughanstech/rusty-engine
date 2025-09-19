@@ -1,96 +1,132 @@
-use glam::Mat4;
+use winit::keyboard::KeyCode;
+
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::from_cols(
+    cgmath::Vector4::new(1.0, 0.0, 0.0, 0.0),
+    cgmath::Vector4::new(0.0, 1.0, 0.0, 0.0),
+    cgmath::Vector4::new(0.0, 0.0, 0.5, 0.0),
+    cgmath::Vector4::new(0.0, 0.0, 0.5, 1.0),
+);
+
+pub struct Camera {
+    pub eye: cgmath::Point3<f32>,
+    pub target: cgmath::Point3<f32>,
+    pub up: cgmath::Vector3<f32>,
+    pub aspect: f32,
+    pub fovy: f32,
+    pub znear: f32,
+    pub zfar: f32,
+}
+
+impl Camera {
+    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+        proj * view
+    }
+}
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    pub view_proj: [[f32; 4]; 4],
+    view_proj: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
     pub fn new() -> Self {
+        use cgmath::SquareMatrix;
         Self {
-            view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            view_proj: cgmath::Matrix4::identity().into(),
         }
     }
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
-        let view = Mat4::look_at_rh(camera.eye, camera.target, camera.up);
-
-        // Use perspective_rh_gl for consistency
-        let proj = Mat4::perspective_rh_gl(
-            camera.fov_y,
-            camera.aspect,
-            camera.z_near,
-            camera.z_far,
-        );
-
-        // Depending on the GPU backend, Y may be flipped
-        self.view_proj = (proj * view).to_cols_array_2d();
+        self.view_proj = (OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix()).into();
     }
 }
 
-pub enum Projection {
-    Orthographic,
-    Perspective,
+pub struct Controller {
+    speed: f32,
+    is_up_pressed: bool,
+    is_down_pressed: bool,
+    is_forward_pressed: bool,
+    is_backward_pressed: bool,
+    is_left_pressed: bool,
+    is_right_pressed: bool,
 }
 
-pub struct Camera {
-    pub eye: glam::Vec3, // Where the camera is located (its position in world space)
-    pub target: glam::Vec3, // The point the camera is looking at
-    pub up: glam::Vec3, // Which way is "up" for the camera
-    pub aspect: f32,
-    pub fov_y: f32,
-    pub z_near: f32,
-    pub z_far: f32,
-    pub projection: Projection,
-    pub _ortho_scale: f32,
-}
-
-impl Camera {
-    pub fn new(aspect: f32) -> Self {
+impl Controller {
+    pub fn new(speed: f32) -> Self {
         Self {
-            eye: glam::vec3(0.0, 0.0, 10.0),
-            target: glam::Vec3::ZERO,
-            up: glam::Vec3::Y,
-            aspect,
-            fov_y: 45f32.to_radians(),
-            z_near: 0.1,
-            z_far: 100.0,
-            projection: Projection::Orthographic, // default
-            _ortho_scale: 100.0,
+            speed,
+            is_up_pressed: false,
+            is_down_pressed: false,
+            is_forward_pressed: false,
+            is_backward_pressed: false,
+            is_left_pressed: false,
+            is_right_pressed: false,
         }
     }
-    // pub fn build_view_projection_matrix(&self) -> Mat4 {
-    //     // LookAt matrix
-    //     let view = Mat4::look_at_rh(self.eye, self.target, self.up);
 
-    //     let proj = match self.projection {
-    //         Projection::Perspective => Mat4::perspective_rh_gl(
-    //             self.fov_y,
-    //             self.aspect,
-    //             self.z_near,
-    //             self.z_far,
-    //         ),
-    //         Projection::Orthographic => {
-    //             let ortho_scale = self.ortho_scale; //zoom level
-    //             Mat4::orthographic_rh_gl(
-    //                 -self.aspect * ortho_scale,
-    //                 self.aspect * ortho_scale,
-    //                 -ortho_scale,
-    //                 ortho_scale,
-    //                 self.z_near,
-    //                 self.z_far,
-    //             )
-    //         }
-    //     };
+    pub fn handle_key(&mut self, key: KeyCode, is_pressed: bool) -> bool {
+        match key {
+            KeyCode::Space => {
+                self.is_up_pressed = is_pressed;
+                true
+            }
+            KeyCode::ShiftLeft => {
+                self.is_down_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyW | KeyCode::ArrowUp => {
+                self.is_forward_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyA | KeyCode::ArrowLeft => {
+                self.is_left_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyS | KeyCode::ArrowDown => {
+                self.is_backward_pressed = is_pressed;
+                true
+            }
+            KeyCode::KeyD | KeyCode::ArrowRight => {
+                self.is_right_pressed = is_pressed;
+                true
+            }
+            _ => false,
+        }
+    }
 
-    //     proj * view
-    // }
+    pub fn update_camera(&self, camera: &mut Camera) {
+        use cgmath::InnerSpace;
+        let forward = camera.target - camera.eye;
+        let forward_norm = forward.normalize();
+        let forward_mag = forward.magnitude();
 
-    pub fn toggle_projection(&mut self) {
-        self.projection = match self.projection {
-            Projection::Orthographic => Projection::Perspective,
-            Projection::Perspective => Projection::Orthographic,
-        };
+        // Prevents glitching when camera gets too close to the
+        // center of the scene.
+        if self.is_forward_pressed && forward_mag > self.speed {
+            camera.eye += forward_norm * self.speed;
+        }
+        if self.is_backward_pressed {
+            camera.eye -= forward_norm * self.speed;
+        }
+
+        let right = forward_norm.cross(camera.up);
+
+        // Redo radius calc in case the up/ down is pressed.
+        let forward = camera.target - camera.eye;
+        let forward_mag = forward.magnitude();
+
+        if self.is_right_pressed {
+            // Rescale the distance between the target and eye so
+            // that it doesn't change. The eye therefore still
+            // lies on the circle made by the target and eye.
+            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
+        }
+        if self.is_left_pressed {
+            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+        }
     }
 }

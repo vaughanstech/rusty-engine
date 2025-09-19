@@ -24,7 +24,7 @@ impl Vertex {
             0 => Float32x3, // position
             1 => Float32x3, // color
             2 => Float32x2, // tex_coords
-            3 => Float32x3,
+            3 => Float32x3, // normal
         ];
 
     pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
