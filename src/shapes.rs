@@ -8,6 +8,29 @@ Responsibilities:
 
 use crate::vertex::Vertex;
 
+pub fn create_plane() -> (Vec<Vertex>, Vec<u16>) {
+    let mut plane_vertices = vec![
+        // Bottom Left
+        Vertex { position: [-5.0, 0.0, -5.0], normal: [0.0, 0.0, 0.0], tex_coords: [0.0, 0.0], color: [0.3, 0.3, 0.3] },
+        // Bottom Right
+        Vertex { position: [5.0, 0.0, -5.0], normal: [0.0, 0.0, 0.0], tex_coords: [1.0, 0.0], color: [0.3, 0.3, 0.3] },
+        // Top Right
+        Vertex { position: [5.0, 0.0, 5.0], normal: [0.0, 0.0, 0.0], tex_coords: [1.0, 1.0], color: [0.3, 0.3, 0.3] },
+        // Top Left
+        Vertex { position: [-5.0, 0.0, 5.0], normal: [0.0, 0.0, 0.0], tex_coords: [0.0, 1.0], color: [0.3, 0.3, 0.3] },
+    ];
+
+    let plane_indices = vec![
+        0, 1, 2, // first triangle
+        0, 2, 3, // second triangle
+    ];
+
+    Vertex::compute_normals(&mut plane_vertices, &plane_indices);
+
+    (plane_vertices, plane_indices)
+}
+
+
 pub fn create_pyramid() -> (Vec<Vertex>, Vec<u16>) {
     let mut vertices = vec![
         // Base (y = 0, facing downward - normal = (0, -1, 0))

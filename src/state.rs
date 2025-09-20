@@ -9,12 +9,11 @@ Responsibilities:
 */
 
 use crate::{
-    camera::{Camera, CameraUniform, Controller}, light::{Light, Lights}, renderable::Renderable, shapes::{self, create_cube, create_pyramid }, texture::{self, Texture}, vertex::Vertex
+    camera::{Camera, CameraUniform, Controller, Projection}, light::{Light, Lights}, renderable::Renderable, shapes::{self, create_cube, create_plane, create_pyramid }, texture::{self, Texture}, vertex::Vertex
 };
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-use winit::{event_loop::ActiveEventLoop, keyboard::{KeyCode}};
-use winit::event::WindowEvent;
+use winit::{event::{MouseButton, MouseScrollDelta}, event_loop::ActiveEventLoop, keyboard::KeyCode};
 use winit::window::Window;
 
 // We'll create a struct to manage our GPU state
@@ -29,6 +28,7 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
+    projection: Projection,
     pub controller: Controller,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
@@ -39,6 +39,7 @@ pub struct State {
     last_frame: std::time::Instant,
     renderables: Vec<Renderable>,
     start_time: std::time::Instant,
+    pub mouse_pressed: bool,
 }
 
 impl State {
@@ -138,18 +139,11 @@ impl State {
         //     }],
         // });
         // 9. Setup Camera uniform buffer and bind group
-        let camera = Camera {
-            eye: (0.0, 5.0, 10.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
-            up: cgmath::Vector3::unit_y(),
-            aspect: config.width as f32 / config.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
-        let controller = Controller::new(0.2);
+        let camera = Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
+        let projection = Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let controller = Controller::new(4.0, 1.0);
         let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
+        camera_uniform.update_view_proj(&camera, &projection);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -295,6 +289,25 @@ impl State {
 
         let start_time = std::time::Instant::now();
 
+        let (plane_vertices, plane_indices) = create_plane();
+        let plane = Renderable::new(
+            &device,
+            &queue,
+            &render_pipeline,
+            &uniform_material_bind_group_layout,
+            &plane_vertices,
+            &plane_indices,
+            None,
+            false,
+            true,
+            false,
+            0.0,
+            [0.5, 0.5, 0.5],
+            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(2.0, 2.0, 2.0),
+        );
+
         let (_white_tex, _white_bind_group) = texture::create_white_texture(
             &device,
             &queue,
@@ -345,7 +358,7 @@ impl State {
             false,
             0.0,
             [1.0, 1.0, 1.0],
-            glam::vec3(2.5, 0.0, 0.0), // position
+            glam::vec3(2.5, 0.5, 0.0), // position
             glam::vec3(0.0, 0.0, 0.0), // spin around Y
             glam::vec3(1.0, 1.0, 1.0), // scale
         );
@@ -389,14 +402,14 @@ impl State {
             Some(grey_bind_group),
             true,
             true,
-            true,
-            10.0,
+            false,
+            0.0,
             [1.0, 1.0, 1.0],
-            glam::vec3(0.0, 0.0, 0.0),
+            glam::vec3(0.0, 1.0, 0.0),
             glam::vec3(0.0, 0.0, 0.0),
             glam::vec3(1.0, 1.0, 1.0),
         );
-        let renderables = vec![pyramid, cube, sphere];
+        let renderables = vec![plane, pyramid, cube, sphere];
 
         Self {
             surface,
@@ -409,6 +422,7 @@ impl State {
             render_pipeline,
             diffuse_bind_group,
             camera,
+            projection,
             camera_bind_group,
             camera_buffer,
             camera_uniform,
@@ -418,19 +432,21 @@ impl State {
             controller,
             last_frame: std::time::Instant::now(),
             renderables,
-            start_time
+            start_time,
+            mouse_pressed: false,
         }
     }
 
     // Called when window resizes
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
+            self.projection.resize(new_size.width, new_size.height);
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
-            self.camera.aspect = new_size.width as f32 / new_size.height as f32
+            // self.camera.aspect = new_size.width as f32 / new_size.height as f32
         }
     }
 
@@ -441,6 +457,17 @@ impl State {
         } else {
             self.controller.handle_key(code, is_pressed);
         }
+    }
+
+    pub fn handle_mouse_button(&mut self, button: MouseButton, pressed: bool) {
+        match button {
+            MouseButton::Left => self.mouse_pressed = pressed,
+            _ => {}
+        }
+    }
+
+    pub fn handle_mouse_scroll(&mut self, delta: &MouseScrollDelta) {
+        self.controller.handle_scroll(delta);
     }
 
     pub fn window(&self) -> &Window {
@@ -456,11 +483,11 @@ impl State {
         let dt = now.duration_since(self.last_frame).as_secs_f32();
         self.last_frame = now;
 
-        self.controller.update_camera(&mut self.camera);
+        self.controller.update_camera(&mut self.camera, dt);
 
         let time = self.start_time.elapsed().as_secs_f32();
 
-        self.camera_uniform.update_view_proj(&self.camera);
+        self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
         
         for r in &mut self.renderables {
@@ -475,7 +502,7 @@ impl State {
         active_lights.push(Light {
             position: [10.0, 10.0, 10.0],
             color: [1.0, 1.0, 1.0],
-            intensity: 0.0,
+            intensity: 1.0,
             _padding: 0.0,
         });
 

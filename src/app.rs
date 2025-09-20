@@ -37,6 +37,27 @@ impl ApplicationHandler for App {
         self.state = Some(State::new(window).block_on());
     }
 
+    fn device_event(
+            &mut self,
+            _event_loop: &ActiveEventLoop,
+            _device_id: winit::event::DeviceId,
+            event: DeviceEvent,
+        ) {
+        let state = if let Some(state) = &mut self.state {
+            state
+        } else {
+            return;
+        };
+        match event {
+            DeviceEvent::MouseMotion { delta: (dx, dy) } => {
+                if state.mouse_pressed {
+                    state.controller.handle_mouse(dx, dy);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn window_event(
             &mut self,
             event_loop: &ActiveEventLoop,
@@ -105,6 +126,23 @@ impl ApplicationHandler for App {
                 WindowEvent::Resized(physical_size) => {
                     if let Some(state) = self.state.as_mut() {
                         state.resize(physical_size);
+                    }
+                }
+                WindowEvent::MouseInput {
+                    state: btn_state,
+                    button,
+                    ..
+                } => {
+                    if let Some(state) = self.state.as_mut() {
+                        state.handle_mouse_button(button, btn_state.is_pressed());
+                    }
+                }
+                WindowEvent::MouseWheel {
+                    delta,
+                    ..
+                } => {
+                    if let Some(state) = self.state.as_mut() {
+                        state.handle_mouse_scroll(&delta);
                     }
                 }
                 WindowEvent::KeyboardInput {
