@@ -171,6 +171,9 @@ impl State {
             }],
             label: Some("Camera Bind Group"),
         });
+        
+        let diffuse_bytes = include_bytes!("happy_tree.png"); // example image
+        let diffuse_texture = Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree").unwrap();
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Text Bind Group Layout"),
             entries: &[
@@ -192,8 +195,6 @@ impl State {
                 },
             ],
         });
-        let diffuse_bytes = include_bytes!("happy_tree.png"); // example image
-        let diffuse_texture = Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree");
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
             entries: &[
@@ -352,7 +353,7 @@ impl State {
             &uniform_material_bind_group_layout,
             &cube_vertices,
             &cube_indices,
-            Some(grey_bind_group),
+            Some(_tex_bind_group),
             true,
             true,
             false,
