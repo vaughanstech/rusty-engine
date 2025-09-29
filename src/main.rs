@@ -9,11 +9,11 @@ Responsibilities:
 
 mod app;
 mod camera;
-mod controller;
-mod light;
-mod texture;
+mod instance;
+mod model;
+mod resources;
 mod state;
-mod renderable;
+mod texture;
 mod vertex;
 mod uniforms;
 mod shapes;

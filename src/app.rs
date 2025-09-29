@@ -1,4 +1,5 @@
 use crate::state::{State};
+use image::codecs;
 use pollster::FutureExt;
 use winit::{
     application::ApplicationHandler,
@@ -48,14 +49,14 @@ impl ApplicationHandler for App {
         } else {
             return;
         };
-        match event {
-            DeviceEvent::MouseMotion { delta: (dx, dy) } => {
-                if state.mouse_pressed {
-                    state.controller.handle_mouse(dx, dy);
-                }
-            }
-            _ => {}
-        }
+        // match event {
+        //     DeviceEvent::MouseMotion { delta: (dx, dy) } => {
+        //         if state.mouse_pressed {
+        //             state.controller.handle_mouse(dx, dy);
+        //         }
+        //     }
+        //     _ => {}
+        // }
     }
 
     fn window_event(
@@ -101,16 +102,14 @@ impl ApplicationHandler for App {
                 }
                 WindowEvent::RedrawRequested => {
                     if let Some(state) = self.state.as_mut() {
-                        let time = std::time::Instant::now();
                         state.window().request_redraw();
                         state.update();
-                        state.update_lights(time.elapsed().as_secs_f32());
                         match state.render() {
                             Ok(_) => {}
                             // Reconfigure the surface if it's lost or outdated
                             Err(
                                 wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                            ) => state.resize(state.size),
+                            ) => state.resize(state.size.width, state.size.height),
                             // The system is out of memory, we should probably quit
                             Err(wgpu::SurfaceError::OutOfMemory) => {
                                 log::error!("OutOfMemory");
@@ -123,9 +122,22 @@ impl ApplicationHandler for App {
                         }
                     }
                 }
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(code),
+                            state: key_state,
+                            ..
+                        },
+                    ..
+                } => {
+                    if let Some(state) = self.state.as_mut() {
+                        state.input(&event);
+                    }
+                }
                 WindowEvent::Resized(physical_size) => {
                     if let Some(state) = self.state.as_mut() {
-                        state.resize(physical_size);
+                        state.resize(physical_size.width, physical_size.height);
                     }
                 }
                 WindowEvent::MouseInput {
@@ -145,19 +157,19 @@ impl ApplicationHandler for App {
                         state.handle_mouse_scroll(&delta);
                     }
                 }
-                WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            physical_key: PhysicalKey::Code(code),
-                            state: key_state,
-                            ..
-                        },
-                    ..
-                } => {
-                    if let Some(state) = self.state.as_mut() {
-                        state.handle_key(event_loop, code, key_state.is_pressed());
-                    }
-                }
+                // WindowEvent::KeyboardInput {
+                //     event:
+                //         KeyEvent {
+                //             physical_key: PhysicalKey::Code(code),
+                //             state: key_state,
+                //             ..
+                //         },
+                //     ..
+                // } => {
+                //     if let Some(state) = self.state.as_mut() {
+                //         state.handle_key(event_loop, code, key_state.is_pressed());
+                //     }
+                // }
                 _ => {}
             }
     }
