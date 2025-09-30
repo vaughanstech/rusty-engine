@@ -1,4 +1,4 @@
-use std::{f32::consts::FRAC_PI_2, time::Duration};
+use std::{f32::consts::FRAC_PI_2};
 use cgmath::{perspective, InnerSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta, keyboard::KeyCode};
 
@@ -167,7 +167,7 @@ impl Controller {
     pub fn handle_scroll(&mut self, delta: &MouseScrollDelta) {
         self.scroll = match delta {
             // I'm assuming a line is about 100 pixels
-            MouseScrollDelta::LineDelta(_, scroll) => -scroll * 5.0,
+            MouseScrollDelta::LineDelta(_, scroll) => -scroll * 0.5,
             MouseScrollDelta::PixelDelta(PhysicalPosition { y: scroll, .. }) => -*scroll as f32,
         };
     }

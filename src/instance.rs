@@ -1,4 +1,3 @@
-use cgmath::Rotation3;
 
 use crate::model;
 

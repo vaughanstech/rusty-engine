@@ -54,9 +54,9 @@ impl Vertex for ModelVertex {
 }
 
 pub struct Material {
-    pub name: String,
-    pub diffuse_texture: texture::Texture,
-    pub normal_texture: texture::Texture,
+    pub _name: String,
+    pub _diffuse_texture: texture::Texture,
+    pub _normal_texture: texture::Texture,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -64,8 +64,8 @@ impl Material {
     pub fn new(
         device: &wgpu::Device,
         name: &str,
-        diffuse_texture: texture::Texture,
-        normal_texture: texture::Texture,
+        _diffuse_texture: texture::Texture,
+        _normal_texture: texture::Texture,
         layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -73,35 +73,35 @@ impl Material {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                    resource: wgpu::BindingResource::TextureView(&_diffuse_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                    resource: wgpu::BindingResource::Sampler(&_diffuse_texture.sampler),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+                    resource: wgpu::BindingResource::TextureView(&_normal_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
+                    resource: wgpu::BindingResource::Sampler(&_normal_texture.sampler),
                 },
             ],
             label: Some(name),
         });
 
         Self {
-            name: String::from(name),
-            diffuse_texture,
-            normal_texture,
+            _name: String::from(name),
+            _diffuse_texture,
+            _normal_texture,
             bind_group,
         }
     }
 }
 
 pub struct Mesh {
-    pub name: String,
+    pub _name: String,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub num_elements: u32,
@@ -115,7 +115,7 @@ pub struct Model {
 }
 
 pub trait DrawModel<'a> {
-    fn draw_mesh(&mut self, mesh: &'a Mesh, material: &'a Material, camera_bind_group: &'a wgpu::BindGroup, light_bind_group: &'a wgpu::BindGroup);
+    fn _draw_mesh(&mut self, mesh: &'a Mesh, material: &'a Material, camera_bind_group: &'a wgpu::BindGroup, light_bind_group: &'a wgpu::BindGroup);
     fn draw_mesh_instanced(
         &mut self,
         mesh: &'a Mesh,
@@ -125,7 +125,7 @@ pub trait DrawModel<'a> {
         light_bind_group: &'a wgpu::BindGroup,
     );
 
-    fn draw_model(&mut self, model: &'a Model, camera_bind_group: &'a wgpu::BindGroup, light_bind_group: &'a wgpu::BindGroup);
+    fn _draw_model(&mut self, model: &'a Model, camera_bind_group: &'a wgpu::BindGroup, light_bind_group: &'a wgpu::BindGroup);
     fn draw_model_instanced(
         &mut self,
         model: &'a Model,
@@ -140,7 +140,7 @@ impl<'a, 'b> DrawModel<'b> for wgpu::RenderPass<'a>
 where
     'b: 'a,
 {
-    fn draw_mesh(&mut self, mesh: &'b Mesh, material: &'b Material, camera_bind_group: &'b wgpu::BindGroup, light_bind_group: &'b wgpu::BindGroup) {
+    fn _draw_mesh(&mut self, mesh: &'b Mesh, material: &'b Material, camera_bind_group: &'b wgpu::BindGroup, light_bind_group: &'b wgpu::BindGroup) {
         self.draw_mesh_instanced(mesh, material, 0..1, camera_bind_group, light_bind_group);
     }
 
@@ -160,7 +160,7 @@ where
         self.draw_indexed(0..mesh.num_elements, 0, instances);
     }
 
-    fn draw_model(&mut self, model: &'b Model, camera_bind_group: &'b wgpu::BindGroup, light_bind_group: &'b wgpu::BindGroup) {
+    fn _draw_model(&mut self, model: &'b Model, camera_bind_group: &'b wgpu::BindGroup, light_bind_group: &'b wgpu::BindGroup) {
         self.draw_model_instanced(model, 0..1, camera_bind_group, light_bind_group);
     }
 
@@ -179,7 +179,7 @@ where
 }
 
 pub trait DrawLight<'a> {
-    fn draw_light_mesh(
+    fn _draw_light_mesh(
         &mut self,
         mesh: &'a Mesh,
         camera_bind_group: &'a wgpu::BindGroup,
@@ -212,7 +212,7 @@ impl<'a, 'b> DrawLight<'b> for wgpu::RenderPass<'a>
 where 
     'b: 'a,
 {
-    fn draw_light_mesh(
+    fn _draw_light_mesh(
             &mut self,
             mesh: &'b Mesh,
             camera_bind_group: &'b wgpu::BindGroup,

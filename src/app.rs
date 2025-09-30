@@ -12,7 +12,6 @@ use winit::{
 pub struct App {
     state: Option<State>,
     cursor_locked: bool,
-    last_time: instant::Instant,
 }
 
 impl App {
@@ -20,7 +19,6 @@ impl App {
         Self {
             state: None,
             cursor_locked: false,
-            last_time: instant::Instant::now(),
         }
     }
 }

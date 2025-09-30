@@ -8,10 +8,10 @@ Responsibilities:
     - ex: engine room
 */
 
-use crate::{camera::{self, Camera, CameraUniform, Controller, Projection}, instance::{Instance, InstanceRaw}, light, model::{self, DrawModel, Vertex}, resources, texture};
+use crate::{camera::{Camera, CameraUniform, Controller, Projection}, instance::{Instance, InstanceRaw}, light, model::{self, DrawModel, Vertex}, resources, texture};
 use std::sync::Arc;
 use wgpu::{util::DeviceExt};
-use winit::{event::{MouseButton, MouseScrollDelta, WindowEvent}, event_loop::ActiveEventLoop, keyboard::KeyCode};
+use winit::{event::{MouseButton, MouseScrollDelta}, event_loop::ActiveEventLoop, keyboard::KeyCode};
 use winit::window::Window;
 use cgmath::prelude::*;
 
@@ -157,8 +157,6 @@ impl State {
 
         // Grabbing the bytes from the image file and load them into an image
         // which is then converted into a Vec of RGBA bytes
-        let diffuse_bytes = include_bytes!("happy_tree.png");
-        let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree.png", true).unwrap();
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -373,11 +371,6 @@ impl State {
                 resource: light_buffer.as_entire_binding(),
             }],
             label: None,
-        });
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
         // 10. Define pipeline layout
