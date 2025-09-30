@@ -25,7 +25,7 @@ pub struct State {
     is_surface_configured: bool,
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
-    diffuse_bind_group: wgpu::BindGroup,
+    // diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
     // projection: Projection,
     pub controller: Controller,
@@ -156,7 +156,7 @@ impl State {
         // Grabbing the bytes from the image file and load them into an image
         // which is then converted into a Vec of RGBA bytes
         let diffuse_bytes = include_bytes!("happy_tree.png");
-        let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree.png").unwrap();
+        let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy_tree.png", true).unwrap();
         let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -175,23 +175,39 @@ impl State {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
             label: Some("texture_bind_group_layout"),
         });
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
+        // let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     layout: &texture_bind_group_layout,
+        //     entries: &[
+        //         wgpu::BindGroupEntry {
+        //             binding: 0,
+        //             resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+        //         },
+        //         wgpu::BindGroupEntry {
+        //             binding: 1,
+        //             resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+        //         },
+        //     ],
+        //     label: Some("diffuse_bind_group"),
+        // });
         // 9. Setup Camera uniform buffer and bind group
         let camera = Camera {
             // position the camera 1 unit up and 2 units back
@@ -430,7 +446,7 @@ impl State {
             is_surface_configured: false,
             window: window,
             render_pipeline,
-            diffuse_bind_group,
+            // diffuse_bind_group,
             camera,
             // projection,
             camera_bind_group,
