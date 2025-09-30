@@ -1,16 +1,12 @@
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Light {
+// Represents a colored point in space
+pub struct LightUniform {
     pub position: [f32; 3],
-    pub intensity: f32,
+    // Due to uniforms requiring 16 byte (4 float) spacing, we need to use a padding field here
+    pub _padding: u32,
     pub color: [f32; 3],
-    pub _padding: f32,
+    // Due to uniforms requiring 16 byte (4 float) spacing, we need to use a padding field here
+    pub _padding2: u32,
 }
 
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Lights {
-    pub lights: [Light; 16],
-    pub num_lights: u32,
-    pub _padding: [u32; 3],
-}

@@ -1,4 +1,4 @@
-use std::f32::consts::FRAC_PI_2;
+use std::{f32::consts::FRAC_PI_2};
 use cgmath::{perspective, InnerSpace, Matrix4, Point3, Rad, SquareMatrix, Vector3};
 use winit::{dpi::PhysicalPosition, event::MouseScrollDelta, keyboard::KeyCode};
 
@@ -47,8 +47,8 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    view_proj: [[f32; 4]; 4],
     view_position: [f32; 4],
+    view_proj: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
@@ -173,7 +173,7 @@ impl Controller {
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera, dt: f32) {
-         // Move forward/backward and left/right
+        // Move forward/backward and left/right
         let (yaw_sin, yaw_cos) = camera.yaw.0.sin_cos();
         let forward = Vector3::new(yaw_cos, 0.0, yaw_sin).normalize();
         let right = Vector3::new(-yaw_sin, 0.0, yaw_cos).normalize();
