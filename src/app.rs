@@ -1,5 +1,4 @@
 use crate::state::{State};
-use image::codecs;
 use pollster::FutureExt;
 use winit::{
     application::ApplicationHandler,
@@ -13,6 +12,7 @@ use winit::{
 pub struct App {
     state: Option<State>,
     cursor_locked: bool,
+    last_time: instant::Instant,
 }
 
 impl App {
@@ -20,6 +20,7 @@ impl App {
         Self {
             state: None,
             cursor_locked: false,
+            last_time: instant::Instant::now(),
         }
     }
 }
@@ -49,14 +50,14 @@ impl ApplicationHandler for App {
         } else {
             return;
         };
-        // match event {
-        //     DeviceEvent::MouseMotion { delta: (dx, dy) } => {
-        //         if state.mouse_pressed {
-        //             state.controller.handle_mouse(dx, dy);
-        //         }
-        //     }
-        //     _ => {}
-        // }
+        match event {
+            DeviceEvent::MouseMotion { delta: (dx, dy) } => {
+                if state.mouse_pressed {
+                    state.controller.handle_mouse(dx, dy);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn window_event(
@@ -132,7 +133,7 @@ impl ApplicationHandler for App {
                     ..
                 } => {
                     if let Some(state) = self.state.as_mut() {
-                        state.input(&event);
+                        state.handle_key(event_loop, code, key_state.is_pressed());
                     }
                 }
                 WindowEvent::Resized(physical_size) => {
