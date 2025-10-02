@@ -5,6 +5,7 @@ use crate::model;
 
 // Describing each instance
 pub struct Instance {
+    pub initial_position: cgmath::Vector3<f32>,
     pub position: cgmath::Vector3<f32>,
     pub rotation: cgmath::Quaternion<f32>,
 }
@@ -23,7 +24,8 @@ pub struct InstanceRaw {
 // Create method to convert Instance to InstanceRaw
 impl Instance {
     pub fn to_raw(&self) -> InstanceRaw {
-        let model = cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation);
+        let combined_position = self.initial_position + self.position;
+        let model = cgmath::Matrix4::from_translation(combined_position) * cgmath::Matrix4::from(self.rotation);
 
         InstanceRaw {
             model: model.into(),
@@ -32,16 +34,6 @@ impl Instance {
             
     }
 }
-
-// impl Instance {
-//     pub fn to_raw(&self) -> InstanceRaw {
-//         InstanceRaw {
-//             model: (cgmath::Matrix4::from_translation(self.position)
-//                 * cgmath::Matrix4::from(self.rotation))
-//             .into(),
-//         }
-//     }
-// }
 
 impl model::Vertex for InstanceRaw {
     fn desc() -> wgpu::VertexBufferLayout<'static> {

@@ -1,12 +1,16 @@
+use std::sync::Arc;
+
 use crate::state::{State};
+use egui_wgpu::ScreenDescriptor;
 use pollster::FutureExt;
+use wgpu::SurfaceError;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{WindowAttributes,CursorGrabMode},
+    window::{CursorGrabMode, Window, WindowAttributes},
 };
 
 pub struct App {
@@ -16,6 +20,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
+        let menu_instance = egui_wgpu::wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         Self {
             state: None,
             cursor_locked: false,
@@ -64,6 +69,15 @@ impl ApplicationHandler for App {
             _window_id: winit::window::WindowId,
             event: WindowEvent,
         ) {
+            if let Some(state) = self.state.as_mut() {
+                // Let egui process the event, capture flag tells us if it "ate" it
+                let captured = state.egui_renderer.handle_input(&state.window, &event);
+
+                if captured {
+                    // Do NOT forward to camera/light/game if egui is using this input
+                    return;
+                }
+            }
 
             match event {
                 WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
@@ -101,8 +115,6 @@ impl ApplicationHandler for App {
                 }
                 WindowEvent::RedrawRequested => {
                     if let Some(state) = self.state.as_mut() {
-                        state.window().request_redraw();
-                        state.update();
                         match state.render() {
                             Ok(_) => {}
                             // Reconfigure the surface if it's lost or outdated
@@ -118,7 +130,15 @@ impl ApplicationHandler for App {
                             Err(wgpu::SurfaceError::Timeout) => {
                                 log::warn!("Surface timeout")
                             }
+                            // Default error
+                            Err(e) => {
+                                log::error!("Unable to render {}", e)
+                            }
                         }
+
+                        state.handle_menu();
+                        state.window().request_redraw();
+                        state.update();
                     }
                 }
                 WindowEvent::KeyboardInput {
@@ -156,19 +176,6 @@ impl ApplicationHandler for App {
                         state.handle_mouse_scroll(&delta);
                     }
                 }
-                // WindowEvent::KeyboardInput {
-                //     event:
-                //         KeyEvent {
-                //             physical_key: PhysicalKey::Code(code),
-                //             state: key_state,
-                //             ..
-                //         },
-                //     ..
-                // } => {
-                //     if let Some(state) = self.state.as_mut() {
-                //         state.handle_key(event_loop, code, key_state.is_pressed());
-                //     }
-                // }
                 _ => {}
             }
     }

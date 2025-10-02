@@ -9,6 +9,7 @@ Responsibilities:
 
 mod app;
 mod camera;
+mod gui;
 mod instance;
 mod light;
 mod model;

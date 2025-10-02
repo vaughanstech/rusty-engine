@@ -8,24 +8,25 @@ Responsibilities:
     - ex: engine room
 */
 
-use crate::{camera::{Camera, CameraUniform, Controller, Projection}, instance::{Instance, InstanceRaw}, light, model::{self, DrawModel, Vertex}, resources, texture};
+use crate::{camera::{Camera, CameraUniform, Controller, Projection}, gui::EguiRenderer, instance::{Instance, InstanceRaw}, light, model::{self, DrawModel, Vertex}, resources, texture};
 use std::sync::Arc;
-use wgpu::{util::DeviceExt};
+use egui_wgpu::ScreenDescriptor;
+use wgpu::{util::DeviceExt, SurfaceError};
 use winit::{event::{MouseButton, MouseScrollDelta}, event_loop::ActiveEventLoop, keyboard::KeyCode};
 use winit::window::Window;
 use cgmath::prelude::*;
 
+
 // We'll create a struct to manage our GPU state
 pub struct State {
-    surface: wgpu::Surface<'static>, // The surface (connection between window & GPU)
-    device: wgpu::Device, // Logical device (our handle to the GPU)
-    queue: wgpu::Queue, // Command queue to submit work to the GPU
-    config: wgpu::SurfaceConfiguration, pub(crate) // How the surface is configured (size, format, etc.)
+    pub surface: wgpu::Surface<'static>, // The surface (connection between window & GPU)
+    pub device: wgpu::Device, // Logical device (our handle to the GPU)
+    pub queue: wgpu::Queue, // Command queue to submit work to the GPU
+    pub config: wgpu::SurfaceConfiguration, pub(crate) // How the surface is configured (size, format, etc.)
     size: winit::dpi::PhysicalSize<u32>,
     is_surface_configured: bool,
-    window: Arc<Window>,
+    pub window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
-    // diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
     projection: Projection,
     pub controller: Controller,
@@ -42,6 +43,8 @@ pub struct State {
     light_render_pipeline: wgpu::RenderPipeline,
     last_frame: std::time::Instant,
     pub mouse_pressed: bool,
+    pub egui_renderer: EguiRenderer,
+    pub scale_factor: f32,
 }
 
 fn create_render_pipeline(
@@ -58,13 +61,13 @@ fn create_render_pipeline(
             layout: Some(layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",  // vertex shader function
+                entry_point: Some("vs_main"),  // vertex shader function
                 buffers: vertex_layouts,
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main", // fragment shader function
+                entry_point: Some("fs_main"), // fragment shader function
                 targets: &[Some(wgpu::ColorTargetState {
                     format: color_format,
                     blend: Some(wgpu::BlendState {
@@ -132,8 +135,8 @@ impl State {
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
                     memory_hints: wgpu::MemoryHints::default(),
+                    trace: wgpu::Trace::Off, // trace path
                 },
-                None, // Trace path (for debugging)
             )
             .await
             .unwrap();
@@ -154,6 +157,8 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
+
+        let egui_renderer = EguiRenderer::new(&device, config.format, None, 1, &window);
 
         // Grabbing the bytes from the image file and load them into an image
         // which is then converted into a Vec of RGBA bytes
@@ -194,20 +199,6 @@ impl State {
             ],
             label: Some("texture_bind_group_layout"),
         });
-        // let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &texture_bind_group_layout,
-        //     entries: &[
-        //         wgpu::BindGroupEntry {
-        //             binding: 0,
-        //             resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-        //         },
-        //         wgpu::BindGroupEntry {
-        //             binding: 1,
-        //             resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-        //         },
-        //     ],
-        //     label: Some("diffuse_bind_group"),
-        // });
         // 9. Setup Camera uniform buffer and bind group
         let camera = Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
         let projection = Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
@@ -248,7 +239,6 @@ impl State {
         // otherwise instances will be parsed out
         const NUM_INSTANCES_PER_ROW: u32 = 10;
         const SPACE_BETWEEN: f32 = 3.0;
-        // const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
         let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
             (0..NUM_INSTANCES_PER_ROW).map(move |x| {
                 let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
@@ -269,31 +259,10 @@ impl State {
                 };
 
                 Instance {
-                    position: position, rotation: rotation,
+                    initial_position: cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 }, position: position, rotation: rotation,
                 }
             })
         }).collect::<Vec<_>>();
-        // let instances = (0..NUM_INSTANCES_PER_ROW)
-        //     .flat_map(|z| {
-        //         (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-        //             let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-        //             let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-        //             let position = cgmath::Vector3 { x, y: 0.0, z };
-
-        //             let rotation = if position.is_zero() {
-        //                 cgmath::Quaternion::from_axis_angle(
-        //                     cgmath::Vector3::unit_z(),
-        //                     cgmath::Deg(0.0),
-        //                 )
-        //             } else {
-        //                 cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-        //             };
-
-        //             Instance { position, rotation }
-        //         })
-        //     })
-        //     .collect::<Vec<_>>();
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
         let instance_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -304,38 +273,6 @@ impl State {
         );
 
         let obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout).await.unwrap();
-        // let camera = Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
-        // let projection = Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
-        // let controller = Controller::new(4.0, 1.0);
-        // let mut camera_uniform = CameraUniform::new();
-        // camera_uniform.update_view_proj(&camera, &projection);
-
-        // let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Camera Buffer"),
-        //     contents: bytemuck::cast_slice(&[camera_uniform]),
-        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        // });
-        // let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //     entries: &[wgpu::BindGroupLayoutEntry {
-        //         binding: 0,
-        //         visibility: wgpu::ShaderStages::VERTEX,
-        //         ty: wgpu::BindingType::Buffer {
-        //             ty: wgpu::BufferBindingType::Uniform,
-        //             has_dynamic_offset: false,
-        //             min_binding_size: None,
-        //         },
-        //         count: None,
-        //     }],
-        //     label: Some("Camera Bind Group Layout"),
-        // });
-        // let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &camera_bind_group_layout,
-        //     entries: &[wgpu::BindGroupEntry {
-        //         binding: 0,
-        //         resource: camera_buffer.as_entire_binding(),
-        //     }],
-        //     label: Some("Camera Bind Group"),
-        // });
 
         // Creating buffer to store light
         let light_uniform = light::LightUniform {
@@ -416,6 +353,8 @@ impl State {
             )
         };
 
+        let scale_factor = 1.0;
+
         Self {
             surface,
             device,
@@ -425,7 +364,6 @@ impl State {
             is_surface_configured: false,
             window: window,
             render_pipeline,
-            // diffuse_bind_group,
             camera,
             projection,
             camera_bind_group,
@@ -442,6 +380,8 @@ impl State {
             light_render_pipeline,
             last_frame: std::time::Instant::now(),
             mouse_pressed: false,
+            egui_renderer,
+            scale_factor,
         }
     }
 
@@ -454,13 +394,8 @@ impl State {
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
             self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
-            // self.camera.aspect = new_size.width as f32 / new_size.height as f32
         }
     }
-
-    // pub fn input(&mut self, event: &WindowEvent) -> bool {
-    //     self.controller.process_events(event)
-    // }
 
     // This is where we'll handle keyboard events
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
@@ -483,13 +418,78 @@ impl State {
         self.controller.handle_scroll(delta);
     }
 
+    pub fn handle_menu(&mut self) {
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: self.window.as_ref().scale_factor() as f32 * self.scale_factor,
+        };
+
+        let surface_texture = self.surface.get_current_texture();
+
+        match surface_texture {
+            Err(SurfaceError::Outdated) => {
+                // Ignoring outdated to allow resizing and minimization
+                println!("wgpu surface outdated");
+                return;
+            }
+            Err(_) => {
+                surface_texture.expect("Failed to acquire next swap chain texture");
+                return;
+            }
+            Ok(_) => {}
+        }
+        let surface_texture = surface_texture.unwrap();
+
+        let surface_view = surface_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {label: None});
+        let window = self.window.as_ref();
+        {
+            self.egui_renderer.begin_frame(window);
+
+            egui::Window::new("winit + egui + wgpu says hello!")
+                .resizable(true)
+                .vscroll(true)
+                .default_open(false)
+                .show(self.egui_renderer.context(), |ui| {
+                    ui.label("Label!");
+
+                    if ui.button("Button!").clicked() {
+                        println!("boom!")
+                    }
+
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.label(format!(
+                            "Pixels per point: {}",
+                            self.egui_renderer.context().pixels_per_point()
+                        ));
+                        if ui.button("-").clicked() {
+                            self.scale_factor = (self.scale_factor - 0.1).max(0.3);
+                        }
+                        if ui.button("+").clicked() {
+                            self.scale_factor = (self.scale_factor + 0.1).min(3.0);
+                        }
+                    });
+                });
+                self.egui_renderer.end_frame_and_draw(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    window,
+                    &surface_view,
+                    screen_descriptor,
+                );
+        }
+        self.queue.submit(Some(encoder.finish()));
+        surface_texture.present();
+        
+    }
+
     pub fn window(&self) -> &Window {
         self.window.as_ref()
     }
-
-    // pub fn input(&mut self, event: &WindowEvent) -> bool {
-    //     self.controller.process_events(event)
-    // }
 
     pub fn update(&mut self) {
         let now = std::time::Instant::now();
@@ -505,14 +505,6 @@ impl State {
         let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
         self.light_uniform.position = (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(60.0 * dt)) * old_position).into();
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
-        // let now = std::time::Instant::now();
-        // let dt = now.duration_since(self.last_frame).as_secs_f32();
-        // self.last_frame = now;
-
-        // self.controller.update_camera(&mut self.camera, dt);
-
-        // self.camera_uniform.update_view_proj(&self.camera, &self.projection);
-        // self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
     }
 
     // Render a single frame (clear screen to a color)
@@ -568,10 +560,6 @@ impl State {
 
                     render_pass.set_pipeline(&self.render_pipeline);
                     render_pass.draw_model_instanced(&self.obj_model, 0..self.instances.len() as u32, &self.camera_bind_group, &self.light_bind_group);
-                    // render_pass.draw_model_in(&self.obj_model, &self.camera_bind_group);
-
-                    // Bind camera once (group 1)
-                    // render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
                     // Render pass dropped here, finishing recording
                 }
 
