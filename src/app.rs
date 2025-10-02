@@ -115,6 +115,8 @@ impl ApplicationHandler for App {
                 }
                 WindowEvent::RedrawRequested => {
                     if let Some(state) = self.state.as_mut() {
+                            state.window().request_redraw();
+                            state.update();
                         match state.render() {
                             Ok(_) => {}
                             // Reconfigure the surface if it's lost or outdated
@@ -136,9 +138,6 @@ impl ApplicationHandler for App {
                             }
                         }
 
-                        state.handle_menu();
-                        state.window().request_redraw();
-                        state.update();
                     }
                 }
                 WindowEvent::KeyboardInput {

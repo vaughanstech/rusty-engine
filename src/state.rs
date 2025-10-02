@@ -524,6 +524,17 @@ impl State {
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor {label: Some("Render Encoder")});
 
+                // Screen descriptor for egui
+                let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                    size_in_pixels: [self.config.width, self.config.height],
+                    pixels_per_point: self.window.scale_factor() as f32 * self.scale_factor,
+                };
+                // Begin egui frame
+                self.egui_renderer.begin_frame(&self.window);
+                // Build egui overlay UI
+                self.egui_renderer.draw_overlay();
+                self.egui_renderer.draw_menu(self.scale_factor);
+
                 {
                     // 4. Begin render pass (define clear color + attachments)
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -562,6 +573,15 @@ impl State {
                     render_pass.draw_model_instanced(&self.obj_model, 0..self.instances.len() as u32, &self.camera_bind_group, &self.light_bind_group);
                     // Render pass dropped here, finishing recording
                 }
+                // Render egui on top
+                self.egui_renderer.end_frame_and_draw(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &self.window,
+                    &view,
+                    screen_descriptor,
+                );
 
                 // 5. Submit recording command to GPU queue
                 self.queue.submit(std::iter::once(encoder.finish()));

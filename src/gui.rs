@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use egui::Context;
 use egui_wgpu::wgpu::{CommandEncoder, Device, Queue, StoreOp, TextureFormat, TextureView};
 use egui_wgpu::{wgpu, Renderer, ScreenDescriptor};
@@ -115,5 +117,41 @@ impl EguiRenderer {
         }
 
         self.frame_started = false;
+    }
+
+    pub fn draw_overlay(&mut self) {
+        egui::TopBottomPanel::top("menu_bar").show(self.context(), |ui| {
+            if ui.button("Quit").clicked() {
+                std::process::exit(0);
+            }
+        });
+    }
+
+    pub fn draw_menu(&mut self, mut scale_factor: f32) {
+        egui::Window::new("winit + egui + wgpu says hello!")
+            .resizable(true)
+            .vscroll(true)
+            .default_open(false)
+            .show(self.context(), |ui| {
+                ui.label("Label!");
+
+                if ui.button("Button!").clicked() {
+                    println!("boom!")
+                }
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Pixels per point: {}",
+                        self.context().pixels_per_point()
+                    ));
+                    if ui.button("-").clicked() {
+                        scale_factor = (scale_factor - 0.1).max(0.3);
+                    }
+                    if ui.button("+").clicked() {
+                        scale_factor = (scale_factor + 0.1).min(3.0);
+                    }
+                });
+            });
     }
 }
