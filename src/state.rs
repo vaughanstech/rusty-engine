@@ -44,9 +44,12 @@ pub struct State {
     light_render_pipeline: wgpu::RenderPipeline,
     last_frame: std::time::Instant,
     pub mouse_pressed: bool,
-    pub scale_factor: f32,
+    scale_factor: f32,
     pub show_menu: bool,
-    pub num_of_instances: u32,
+    num_of_instances: u32,
+    instance_position_x: f32,
+    instance_position_y: f32,
+    instance_position_z: f32,
     egui_state: EguiState,
     egui_renderer: Renderer,
     egui_frame_started: bool,
@@ -370,6 +373,9 @@ impl State {
             scale_factor,
             show_menu: false,
             num_of_instances: 0,
+            instance_position_x: 0.0,
+            instance_position_y: 0.0,
+            instance_position_z: 0.0,
             egui_state,
             egui_renderer,
             egui_frame_started: false,
@@ -429,7 +435,7 @@ impl State {
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
     }
 
-    pub fn redraw_instances(&mut self, num_of_instances: u32, device: &wgpu::Device) -> (std::vec::Vec<Instance>, wgpu::Buffer) {
+    pub fn redraw_instances(&mut self, num_of_instances: u32, instance_position_x: f32, instance_position_y: f32, instance_position_z: f32, device: &wgpu::Device) -> (std::vec::Vec<Instance>, wgpu::Buffer) {
         let num_instances = num_of_instances;
         const SPACE_BETWEEN: f32 = 3.0;
 
@@ -449,7 +455,7 @@ impl State {
                 };
 
                 Instance {
-                    initial_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
+                    initial_position: cgmath::Vector3 { x: instance_position_x, y: instance_position_y, z: instance_position_z },
                     position,
                     rotation,
                 }
@@ -572,15 +578,55 @@ impl State {
                     if ui.button("-").clicked() {
                         if self.num_of_instances > 1 {
                             self.num_of_instances -= 1;
-                            self.redraw_instances(self.num_of_instances, &device);
+                            self.redraw_instances(self.num_of_instances, self.instance_position_x, self.instance_position_y, self.instance_position_z, &device);
                         }
                     }
                     if ui.button("+").clicked() {
                         self.num_of_instances += 1;
-                        self.redraw_instances(self.num_of_instances, &device);
+                        self.redraw_instances(self.num_of_instances, self.instance_position_x, self.instance_position_y, self.instance_position_z, &device);
                     }
                     });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Instance X Position: {}",
+                        self.instance_position_x
+                    ));
+                    ui.add(egui::DragValue::new(&mut self.instance_position_x).speed(0.1));
+                    if ui.button("-").clicked() {
+                        self.instance_position_x -= 1.0;
+                    }
+                    if ui.button("+").clicked() {
+                        self.instance_position_x += 1.0;
+                    }
                 });
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Instance Y Position: {}",
+                        self.instance_position_y
+                    ));
+                    ui.add(egui::DragValue::new(&mut self.instance_position_y).speed(0.1));
+                    if ui.button("-").clicked() {
+                        self.instance_position_y -= 1.0;
+                    }
+                    if ui.button("+").clicked() {
+                        self.instance_position_y += 1.0;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Instance Z Position: {}",
+                        self.instance_position_z
+                    ));
+                    ui.add(egui::DragValue::new(&mut self.instance_position_z).speed(0.1));
+                    if ui.button("-").clicked() {
+                        self.instance_position_z -= 1.0;
+                    }
+                    if ui.button("+").clicked() {
+                        self.instance_position_z += 1.0;
+                    }
+                })
+            });
     }
 
     // Render a single frame (clear screen to a color)
@@ -647,7 +693,7 @@ impl State {
                         render_pass.set_pipeline(&self.light_render_pipeline);
                         render_pass.set_pipeline(&self.render_pipeline);
                     } else {
-                        let (instances, instance_buffer) = self.redraw_instances(num_of_instances, &device);
+                        let (instances, instance_buffer) = self.redraw_instances(num_of_instances, self.instance_position_x, self.instance_position_y, self.instance_position_z, &device);
                         render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
                         render_pass.set_pipeline(&self.light_render_pipeline);
                         render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
