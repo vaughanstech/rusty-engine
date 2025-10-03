@@ -8,21 +8,24 @@ Responsibilities:
     - ex: engine room
 */
 
-use crate::{camera::{Camera, CameraUniform, Controller, Projection}, gui::EguiRenderer, instance::{Instance, InstanceRaw}, light, model::{self, DrawModel, Vertex}, resources, texture};
+use crate::{camera::{Camera, CameraUniform, Controller, Projection}, instance::{Instance, InstanceRaw}, light, model::{self, DrawLight, DrawModel, Vertex}, resources, texture};
 use std::sync::Arc;
-use egui_wgpu::ScreenDescriptor;
-use wgpu::{util::DeviceExt, SurfaceError};
-use winit::{event::{MouseButton, MouseScrollDelta}, event_loop::ActiveEventLoop, keyboard::KeyCode};
+use wgpu::{util::DeviceExt};
+use winit::{event::{MouseButton, MouseScrollDelta, WindowEvent}, event_loop::ActiveEventLoop, keyboard::KeyCode};
 use winit::window::Window;
 use cgmath::prelude::*;
+use egui::Context;
+use egui_wgpu::wgpu::{CommandEncoder, Device, Queue, StoreOp, TextureView};
+use egui_wgpu::{wgpu, Renderer, ScreenDescriptor};
+use egui_winit::State as EguiState;
 
 
 // We'll create a struct to manage our GPU state
 pub struct State {
-    pub surface: wgpu::Surface<'static>, // The surface (connection between window & GPU)
+    surface: wgpu::Surface<'static>, // The surface (connection between window & GPU)
     pub device: wgpu::Device, // Logical device (our handle to the GPU)
     pub queue: wgpu::Queue, // Command queue to submit work to the GPU
-    pub config: wgpu::SurfaceConfiguration, pub(crate) // How the surface is configured (size, format, etc.)
+    config: wgpu::SurfaceConfiguration, pub(crate) // How the surface is configured (size, format, etc.)
     size: winit::dpi::PhysicalSize<u32>,
     is_surface_configured: bool,
     pub window: Arc<Window>,
@@ -34,8 +37,6 @@ pub struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
     obj_model: model::Model,
     light_uniform: light::LightUniform,
     light_bind_group: wgpu::BindGroup,
@@ -43,8 +44,12 @@ pub struct State {
     light_render_pipeline: wgpu::RenderPipeline,
     last_frame: std::time::Instant,
     pub mouse_pressed: bool,
-    pub egui_renderer: EguiRenderer,
     pub scale_factor: f32,
+    pub show_menu: bool,
+    pub num_of_instances: u32,
+    egui_state: EguiState,
+    egui_renderer: Renderer,
+    egui_frame_started: bool,
 }
 
 fn create_render_pipeline(
@@ -104,6 +109,8 @@ fn create_render_pipeline(
     })
 }
 
+
+
 impl State {
     // Async setup because GPU initialization may take time
     pub async fn new(window: Window) -> Self {
@@ -158,7 +165,25 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let egui_renderer = EguiRenderer::new(&device, config.format, None, 1, &window);
+        let egui_context = Context::default();
+
+        let egui_state = egui_winit::State::new(
+            egui_context,
+            egui::viewport::ViewportId::ROOT,
+            &window,
+            Some(window.scale_factor() as f32),
+            None,
+            Some(2 * 1024), // default dimension is 2048
+        );
+        let egui_renderer = Renderer::new(
+            &device,
+            config.format,
+            None,
+            1,
+            true,
+        );
+
+        // let egui_renderer = EguiRenderer::new(&device, config.format, None, 1, &window);
 
         // Grabbing the bytes from the image file and load them into an image
         // which is then converted into a Vec of RGBA bytes
@@ -235,42 +260,6 @@ impl State {
 
         // 10. Setting up instances
         let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        // If NUM_INSTANCES_PER_ROW is set to one, only one instance will be drawn
-        // otherwise instances will be parsed out
-        const NUM_INSTANCES_PER_ROW: u32 = 10;
-        const SPACE_BETWEEN: f32 = 3.0;
-        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                let mut position = cgmath::Vector3 { x: x, y: 0.0, z: z };
-                // let mut position = cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 };
-
-                let rotation = if NUM_INSTANCES_PER_ROW == 1 {
-                    // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                    // as Quaternions can affect scale if they're not created correctly
-                    println!("rotation = None");
-                    position = cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 };
-                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-                } else if position.is_zero() {
-                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-                } else {
-                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                };
-
-                Instance {
-                    initial_position: cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 }, position: position, rotation: rotation,
-                }
-            })
-        }).collect::<Vec<_>>();
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instance_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
 
         let obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout).await.unwrap();
 
@@ -371,8 +360,6 @@ impl State {
             camera_uniform,
             controller,
             depth_texture,
-            instances,
-            instance_buffer,
             obj_model,
             light_uniform,
             light_buffer,
@@ -380,8 +367,12 @@ impl State {
             light_render_pipeline,
             last_frame: std::time::Instant::now(),
             mouse_pressed: false,
-            egui_renderer,
             scale_factor,
+            show_menu: false,
+            num_of_instances: 0,
+            egui_state,
+            egui_renderer,
+            egui_frame_started: false,
         }
     }
 
@@ -418,75 +409,6 @@ impl State {
         self.controller.handle_scroll(delta);
     }
 
-    pub fn handle_menu(&mut self) {
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: [self.config.width, self.config.height],
-            pixels_per_point: self.window.as_ref().scale_factor() as f32 * self.scale_factor,
-        };
-
-        let surface_texture = self.surface.get_current_texture();
-
-        match surface_texture {
-            Err(SurfaceError::Outdated) => {
-                // Ignoring outdated to allow resizing and minimization
-                println!("wgpu surface outdated");
-                return;
-            }
-            Err(_) => {
-                surface_texture.expect("Failed to acquire next swap chain texture");
-                return;
-            }
-            Ok(_) => {}
-        }
-        let surface_texture = surface_texture.unwrap();
-
-        let surface_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {label: None});
-        let window = self.window.as_ref();
-        {
-            self.egui_renderer.begin_frame(window);
-
-            egui::Window::new("winit + egui + wgpu says hello!")
-                .resizable(true)
-                .vscroll(true)
-                .default_open(false)
-                .show(self.egui_renderer.context(), |ui| {
-                    ui.label("Label!");
-
-                    if ui.button("Button!").clicked() {
-                        println!("boom!")
-                    }
-
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "Pixels per point: {}",
-                            self.egui_renderer.context().pixels_per_point()
-                        ));
-                        if ui.button("-").clicked() {
-                            self.scale_factor = (self.scale_factor - 0.1).max(0.3);
-                        }
-                        if ui.button("+").clicked() {
-                            self.scale_factor = (self.scale_factor + 0.1).min(3.0);
-                        }
-                    });
-                });
-                self.egui_renderer.end_frame_and_draw(
-                    &self.device,
-                    &self.queue,
-                    &mut encoder,
-                    window,
-                    &surface_view,
-                    screen_descriptor,
-                );
-        }
-        self.queue.submit(Some(encoder.finish()));
-        surface_texture.present();
-        
-    }
-
     pub fn window(&self) -> &Window {
         self.window.as_ref()
     }
@@ -507,8 +429,162 @@ impl State {
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
     }
 
+    pub fn redraw_instances(&mut self, num_of_instances: u32, device: &wgpu::Device) -> (std::vec::Vec<Instance>, wgpu::Buffer) {
+        let num_instances = num_of_instances;
+        const SPACE_BETWEEN: f32 = 3.0;
+
+        let instances = (0..self.num_of_instances).flat_map(|z| {
+            (0..self.num_of_instances).map(move |x| {
+                let x = SPACE_BETWEEN * (x as f32 - num_instances as f32 / 2.0);
+                let z = SPACE_BETWEEN * (z as f32 - num_instances as f32 / 2.0);
+                let mut position = cgmath::Vector3 { x, y: 0.0, z };
+
+                let rotation = if num_instances == 1 {
+                    position = cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 };
+                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                } else if position.is_zero() {
+                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                } else {
+                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                };
+
+                Instance {
+                    initial_position: cgmath::Vector3::new(0.0, 0.0, 0.0),
+                    position,
+                    rotation,
+                }
+            })
+        }).collect::<Vec<_>>();
+
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+
+        let instance_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+
+        (instances, instance_buffer)
+
+    }
+
+    fn egui_context(&self) -> Context {
+        self.egui_state.egui_ctx().clone()
+    }
+
+    pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) -> bool {
+        let response = self.egui_state.on_window_event(window, event);
+        response.consumed
+    }
+
+    pub fn ppp(&mut self, v: f32) {
+        self.egui_context().set_pixels_per_point(v);
+    }
+
+    pub fn begin_frame(&mut self, window: &Window) {
+        let raw_input = self.egui_state.take_egui_input(window);
+        self.egui_state.egui_ctx().begin_pass(raw_input);
+        self.egui_frame_started = true;
+    }
+
+    pub fn end_frame_and_draw(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        encoder: &mut CommandEncoder,
+        window: &Window,
+        window_surface_view: &TextureView,
+        screen_descriptor: ScreenDescriptor,
+    ) {
+        if !self.egui_frame_started {
+            panic!("begin_frame must be called before end_frame_and_draw can be called!");
+        }
+
+        self.ppp(screen_descriptor.pixels_per_point);
+
+        let full_output = self.egui_state.egui_ctx().end_pass();
+
+        self.egui_state
+            .handle_platform_output(window, full_output.platform_output);
+
+        let tris = self
+            .egui_state
+            .egui_ctx()
+            .tessellate(full_output.shapes, self.egui_state.egui_ctx().pixels_per_point());
+        for (id, image_delta) in &full_output.textures_delta.set {
+            self.egui_renderer
+                .update_texture(device, queue, *id, image_delta);
+        }
+        self.egui_renderer
+            .update_buffers(device, queue, encoder, &tris, &screen_descriptor);
+        let rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: window_surface_view,
+                resolve_target: None,
+                ops: egui_wgpu::wgpu::Operations {
+                    load: egui_wgpu::wgpu::LoadOp::Load,
+                    store: StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            label: Some("egui main render pass"),
+            occlusion_query_set: None,
+        });
+
+        self.egui_renderer
+            .render(&mut rpass.forget_lifetime(), &tris, &screen_descriptor);
+        for x in &full_output.textures_delta.free {
+            self.egui_renderer.free_texture(x)
+        }
+
+        self.egui_frame_started = false;
+    }
+
+    pub fn draw_overlay(&mut self) {
+        egui::TopBottomPanel::top("menu_bar").show(&self.egui_context(), |ui| {
+            if ui.button("Quit").clicked() {
+                std::process::exit(0);
+            }
+        });
+    }
+
+    pub fn draw_menu(&mut self, device: &wgpu::Device) {
+        egui::Window::new("winit + egui + wgpu says hello!")
+            .resizable(true)
+            .vscroll(true)
+            .default_open(false)
+            .show(&self.egui_context(), |ui| {
+                ui.label("Label!");
+
+                if ui.button("Button!").clicked() {
+                    println!("boom!")
+                }
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "# of Instances: {}",
+                        self.num_of_instances
+                    ));
+                    if ui.button("-").clicked() {
+                        if self.num_of_instances > 1 {
+                            self.num_of_instances -= 1;
+                            self.redraw_instances(self.num_of_instances, &device);
+                        }
+                    }
+                    if ui.button("+").clicked() {
+                        self.num_of_instances += 1;
+                        self.redraw_instances(self.num_of_instances, &device);
+                    }
+                    });
+                });
+    }
+
     // Render a single frame (clear screen to a color)
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, window: Arc<Window>, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), wgpu::SurfaceError> {
         // self.window.request_redraw();
         // 1. Acquire next frame from surface
         // Refine error handling
@@ -530,11 +606,13 @@ impl State {
                     pixels_per_point: self.window.scale_factor() as f32 * self.scale_factor,
                 };
                 // Begin egui frame
-                self.egui_renderer.begin_frame(&self.window);
+                self.begin_frame(&window);
                 // Build egui overlay UI
-                self.egui_renderer.draw_overlay();
-                self.egui_renderer.draw_menu(self.scale_factor);
-
+                self.draw_overlay();
+                if self.show_menu {
+                    self.draw_menu(device);
+                }
+                
                 {
                     // 4. Begin render pass (define clear color + attachments)
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -564,21 +642,28 @@ impl State {
                         occlusion_query_set: None,
                         timestamp_writes: None,
                     });
-                    render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-                    use crate::model::DrawLight;
-                    render_pass.set_pipeline(&self.light_render_pipeline);
-                    render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
+                    let num_of_instances = self.num_of_instances;
+                    if num_of_instances < 1 {
+                        render_pass.set_pipeline(&self.light_render_pipeline);
+                        render_pass.set_pipeline(&self.render_pipeline);
+                    } else {
+                        let (instances, instance_buffer) = self.redraw_instances(num_of_instances, &device);
+                        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                        render_pass.set_pipeline(&self.light_render_pipeline);
+                        render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
 
-                    render_pass.set_pipeline(&self.render_pipeline);
-                    render_pass.draw_model_instanced(&self.obj_model, 0..self.instances.len() as u32, &self.camera_bind_group, &self.light_bind_group);
+                        render_pass.set_pipeline(&self.render_pipeline);
+                        render_pass.draw_model_instanced(&self.obj_model, 0..instances.len() as u32, &self.camera_bind_group, &self.light_bind_group);
+                    }
+                    
                     // Render pass dropped here, finishing recording
                 }
                 // Render egui on top
-                self.egui_renderer.end_frame_and_draw(
-                    &self.device,
-                    &self.queue,
+                self.end_frame_and_draw(
+                    &device,
+                    &queue,
                     &mut encoder,
-                    &self.window,
+                    &window,
                     &view,
                     screen_descriptor,
                 );
