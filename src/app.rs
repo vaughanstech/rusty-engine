@@ -1,3 +1,4 @@
+
 use crate::state::{State};
 use pollster::FutureExt;
 use winit::{
@@ -6,7 +7,7 @@ use winit::{
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{WindowAttributes,CursorGrabMode},
+    window::{CursorGrabMode, WindowAttributes},
 };
 
 pub struct App {
@@ -64,112 +65,116 @@ impl ApplicationHandler for App {
             _window_id: winit::window::WindowId,
             event: WindowEvent,
         ) {
+            if let Some(state) = self.state.as_mut() {
+                // Let egui process the event, capture flag tells us if it "ate" it
+                let captured = state.handle_input(&state.window.clone(), &event);
 
-            match event {
-                WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            state: ElementState::Pressed,
-                            physical_key: PhysicalKey::Code(KeyCode::Escape),
-                            ..
-                        },
-                    ..
-                } => event_loop.exit(),
-                WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            state: ElementState::Pressed,
-                            physical_key: PhysicalKey::Code(KeyCode::KeyL),
-                            ..
-                        },
-                    ..
-                } => {
-                    if let Some(state) = self.state.as_mut() {
-                        let window = state.window();
-                        if self.cursor_locked {
-                            // Unlock
-                            let _ = window.set_cursor_grab(CursorGrabMode::None);
-                            self.cursor_locked = false;
-                        } else {
-                            // Lock
-                            if window.set_cursor_grab(CursorGrabMode::Confined).is_err() {
-                                let _ = window.set_cursor_grab(CursorGrabMode::Locked);
-                            }
-                            self.cursor_locked = true;
-                        }
-                    }
+                if captured {
+                    // Do NOT forward to camera/light/game if egui is using this input
+                    return;
                 }
-                WindowEvent::RedrawRequested => {
-                    if let Some(state) = self.state.as_mut() {
-                        state.window().request_redraw();
-                        state.update();
-                        match state.render() {
-                            Ok(_) => {}
-                            // Reconfigure the surface if it's lost or outdated
-                            Err(
-                                wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                            ) => state.resize(state.size.width, state.size.height),
-                            // The system is out of memory, we should probably quit
-                            Err(wgpu::SurfaceError::OutOfMemory) => {
-                                log::error!("OutOfMemory");
-                                event_loop.exit();
-                            }
-                            // This happens when the a frame takes too long to present
-                            Err(wgpu::SurfaceError::Timeout) => {
-                                log::warn!("Surface timeout")
+
+                match event {
+                    WindowEvent::CloseRequested | WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => event_loop.exit(),
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyL),
+                                ..
+                            },
+                        ..
+                    } => {
+                        if let Some(state) = self.state.as_mut() {
+                            let window = state.window();
+                            if self.cursor_locked {
+                                // Unlock
+                                let _ = window.set_cursor_grab(CursorGrabMode::None);
+                                self.cursor_locked = false;
+                            } else {
+                                // Lock
+                                if window.set_cursor_grab(CursorGrabMode::Confined).is_err() {
+                                    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                                }
+                                self.cursor_locked = true;
                             }
                         }
+                    },
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyT),
+                                ..
+                            },
+                        ..
+                    } => {
+                        if let Some(state) = self.state.as_mut() {
+                            state.show_menu = !state.show_menu; // Toggle menu on/off
+                        }
                     }
-                }
-                WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            physical_key: PhysicalKey::Code(code),
-                            state: key_state,
-                            ..
-                        },
-                    ..
-                } => {
-                    if let Some(state) = self.state.as_mut() {
+                    WindowEvent::RedrawRequested => {
+                                state.window().request_redraw();
+                                state.update();
+                            match state.render(state.window.clone(), &state.device.clone(), &state.queue.clone()) {
+                                Ok(_) => {}
+                                // Reconfigure the surface if it's lost or outdated
+                                Err(
+                                    wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                                ) => state.resize(state.size.width, state.size.height),
+                                // The system is out of memory, we should probably quit
+                                Err(wgpu::SurfaceError::OutOfMemory) => {
+                                    log::error!("OutOfMemory");
+                                    event_loop.exit();
+                                }
+                                // This happens when the a frame takes too long to present
+                                Err(wgpu::SurfaceError::Timeout) => {
+                                    log::warn!("Surface timeout")
+                                }
+                                // Default error
+                                Err(e) => {
+                                    log::error!("Unable to render {}", e)
+                                }
+                            }
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                physical_key: PhysicalKey::Code(code),
+                                state: key_state,
+                                ..
+                            },
+                        ..
+                    } => {
                         state.handle_key(event_loop, code, key_state.is_pressed());
                     }
-                }
-                WindowEvent::Resized(physical_size) => {
-                    if let Some(state) = self.state.as_mut() {
+                    WindowEvent::Resized(physical_size) => {
                         state.resize(physical_size.width, physical_size.height);
                     }
-                }
-                WindowEvent::MouseInput {
-                    state: btn_state,
-                    button,
-                    ..
-                } => {
-                    if let Some(state) = self.state.as_mut() {
+                    WindowEvent::MouseInput {
+                        state: btn_state,
+                        button,
+                        ..
+                    } => {
                         state.handle_mouse_button(button, btn_state.is_pressed());
                     }
-                }
-                WindowEvent::MouseWheel {
-                    delta,
-                    ..
-                } => {
-                    if let Some(state) = self.state.as_mut() {
+                    WindowEvent::MouseWheel {
+                        delta,
+                        ..
+                    } => {
                         state.handle_mouse_scroll(&delta);
                     }
+                    _ => {}
                 }
-                // WindowEvent::KeyboardInput {
-                //     event:
-                //         KeyEvent {
-                //             physical_key: PhysicalKey::Code(code),
-                //             state: key_state,
-                //             ..
-                //         },
-                //     ..
-                // } => {
-                //     if let Some(state) = self.state.as_mut() {
-                //         state.handle_key(event_loop, code, key_state.is_pressed());
-                //     }
-                // }
-                _ => {}
             }
+            
     }
 }

@@ -102,7 +102,7 @@ impl Texture {
             // the actual pixel data
             &rgba,
             // the layout of the texture
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * dimensions.0),
                 rows_per_image: Some(dimensions.1),

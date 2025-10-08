@@ -8,24 +8,28 @@ Responsibilities:
     - ex: engine room
 */
 
-use crate::{camera::{Camera, CameraUniform, Controller, Projection}, instance::{Instance, InstanceRaw}, light, model::{self, DrawModel, Vertex}, resources, texture};
+use crate::{camera::{Camera, CameraUniform, Controller, Projection}, instance::{Instance, InstanceRaw}, light, model::{self, DrawLight, DrawModel, Vertex}, resources, texture};
 use std::sync::Arc;
 use wgpu::{util::DeviceExt};
-use winit::{event::{MouseButton, MouseScrollDelta}, event_loop::ActiveEventLoop, keyboard::KeyCode};
+use winit::{event::{MouseButton, MouseScrollDelta, WindowEvent}, event_loop::ActiveEventLoop, keyboard::KeyCode};
 use winit::window::Window;
 use cgmath::prelude::*;
+use egui::Context;
+use egui_wgpu::wgpu::{CommandEncoder, Device, Queue, StoreOp, TextureView};
+use egui_wgpu::{wgpu, Renderer, ScreenDescriptor};
+use egui_winit::State as EguiState;
+
 
 // We'll create a struct to manage our GPU state
 pub struct State {
     surface: wgpu::Surface<'static>, // The surface (connection between window & GPU)
-    device: wgpu::Device, // Logical device (our handle to the GPU)
-    queue: wgpu::Queue, // Command queue to submit work to the GPU
+    pub device: wgpu::Device, // Logical device (our handle to the GPU)
+    pub queue: wgpu::Queue, // Command queue to submit work to the GPU
     config: wgpu::SurfaceConfiguration, pub(crate) // How the surface is configured (size, format, etc.)
     size: winit::dpi::PhysicalSize<u32>,
     is_surface_configured: bool,
-    window: Arc<Window>,
+    pub window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
-    // diffuse_bind_group: wgpu::BindGroup,
     camera: Camera,
     projection: Projection,
     pub controller: Controller,
@@ -33,8 +37,6 @@ pub struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
     obj_model: model::Model,
     light_uniform: light::LightUniform,
     light_bind_group: wgpu::BindGroup,
@@ -42,6 +44,15 @@ pub struct State {
     light_render_pipeline: wgpu::RenderPipeline,
     last_frame: std::time::Instant,
     pub mouse_pressed: bool,
+    scale_factor: f32,
+    pub show_menu: bool,
+    num_of_instances: u32,
+    instance_position_x: f32,
+    instance_position_y: f32,
+    instance_position_z: f32,
+    egui_state: EguiState,
+    egui_renderer: Renderer,
+    egui_frame_started: bool,
 }
 
 fn create_render_pipeline(
@@ -58,13 +69,13 @@ fn create_render_pipeline(
             layout: Some(layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",  // vertex shader function
+                entry_point: Some("vs_main"),  // vertex shader function
                 buffers: vertex_layouts,
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main", // fragment shader function
+                entry_point: Some("fs_main"), // fragment shader function
                 targets: &[Some(wgpu::ColorTargetState {
                     format: color_format,
                     blend: Some(wgpu::BlendState {
@@ -101,6 +112,8 @@ fn create_render_pipeline(
     })
 }
 
+
+
 impl State {
     // Async setup because GPU initialization may take time
     pub async fn new(window: Window) -> Self {
@@ -132,8 +145,8 @@ impl State {
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
                     memory_hints: wgpu::MemoryHints::default(),
+                    trace: wgpu::Trace::Off, // trace path
                 },
-                None, // Trace path (for debugging)
             )
             .await
             .unwrap();
@@ -154,6 +167,26 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
+
+        let egui_context = Context::default();
+
+        let egui_state = egui_winit::State::new(
+            egui_context,
+            egui::viewport::ViewportId::ROOT,
+            &window,
+            Some(window.scale_factor() as f32),
+            None,
+            Some(2 * 1024), // default dimension is 2048
+        );
+        let egui_renderer = Renderer::new(
+            &device,
+            config.format,
+            None,
+            1,
+            true,
+        );
+
+        // let egui_renderer = EguiRenderer::new(&device, config.format, None, 1, &window);
 
         // Grabbing the bytes from the image file and load them into an image
         // which is then converted into a Vec of RGBA bytes
@@ -194,20 +227,6 @@ impl State {
             ],
             label: Some("texture_bind_group_layout"),
         });
-        // let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &texture_bind_group_layout,
-        //     entries: &[
-        //         wgpu::BindGroupEntry {
-        //             binding: 0,
-        //             resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-        //         },
-        //         wgpu::BindGroupEntry {
-        //             binding: 1,
-        //             resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-        //         },
-        //     ],
-        //     label: Some("diffuse_bind_group"),
-        // });
         // 9. Setup Camera uniform buffer and bind group
         let camera = Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
         let projection = Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
@@ -244,98 +263,8 @@ impl State {
 
         // 10. Setting up instances
         let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        // If NUM_INSTANCES_PER_ROW is set to one, only one instance will be drawn
-        // otherwise instances will be parsed out
-        const NUM_INSTANCES_PER_ROW: u32 = 10;
-        const SPACE_BETWEEN: f32 = 3.0;
-        // const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(NUM_INSTANCES_PER_ROW as f32 * 0.5, 0.0, NUM_INSTANCES_PER_ROW as f32 * 0.5);
-        let instances = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                let mut position = cgmath::Vector3 { x: x, y: 0.0, z: z };
-                // let mut position = cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 };
-
-                let rotation = if NUM_INSTANCES_PER_ROW == 1 {
-                    // this is needed so an object at (0, 0, 0) won't get scaled to zero
-                    // as Quaternions can affect scale if they're not created correctly
-                    println!("rotation = None");
-                    position = cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 };
-                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-                } else if position.is_zero() {
-                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-                } else {
-                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                };
-
-                Instance {
-                    position: position, rotation: rotation,
-                }
-            })
-        }).collect::<Vec<_>>();
-        // let instances = (0..NUM_INSTANCES_PER_ROW)
-        //     .flat_map(|z| {
-        //         (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-        //             let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-        //             let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-
-        //             let position = cgmath::Vector3 { x, y: 0.0, z };
-
-        //             let rotation = if position.is_zero() {
-        //                 cgmath::Quaternion::from_axis_angle(
-        //                     cgmath::Vector3::unit_z(),
-        //                     cgmath::Deg(0.0),
-        //                 )
-        //             } else {
-        //                 cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-        //             };
-
-        //             Instance { position, rotation }
-        //         })
-        //     })
-        //     .collect::<Vec<_>>();
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instance_data),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
 
         let obj_model = resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout).await.unwrap();
-        // let camera = Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
-        // let projection = Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
-        // let controller = Controller::new(4.0, 1.0);
-        // let mut camera_uniform = CameraUniform::new();
-        // camera_uniform.update_view_proj(&camera, &projection);
-
-        // let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Camera Buffer"),
-        //     contents: bytemuck::cast_slice(&[camera_uniform]),
-        //     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        // });
-        // let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //     entries: &[wgpu::BindGroupLayoutEntry {
-        //         binding: 0,
-        //         visibility: wgpu::ShaderStages::VERTEX,
-        //         ty: wgpu::BindingType::Buffer {
-        //             ty: wgpu::BufferBindingType::Uniform,
-        //             has_dynamic_offset: false,
-        //             min_binding_size: None,
-        //         },
-        //         count: None,
-        //     }],
-        //     label: Some("Camera Bind Group Layout"),
-        // });
-        // let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout: &camera_bind_group_layout,
-        //     entries: &[wgpu::BindGroupEntry {
-        //         binding: 0,
-        //         resource: camera_buffer.as_entire_binding(),
-        //     }],
-        //     label: Some("Camera Bind Group"),
-        // });
 
         // Creating buffer to store light
         let light_uniform = light::LightUniform {
@@ -416,6 +345,8 @@ impl State {
             )
         };
 
+        let scale_factor = 1.0;
+
         Self {
             surface,
             device,
@@ -425,7 +356,6 @@ impl State {
             is_surface_configured: false,
             window: window,
             render_pipeline,
-            // diffuse_bind_group,
             camera,
             projection,
             camera_bind_group,
@@ -433,8 +363,6 @@ impl State {
             camera_uniform,
             controller,
             depth_texture,
-            instances,
-            instance_buffer,
             obj_model,
             light_uniform,
             light_buffer,
@@ -442,6 +370,15 @@ impl State {
             light_render_pipeline,
             last_frame: std::time::Instant::now(),
             mouse_pressed: false,
+            scale_factor,
+            show_menu: false,
+            num_of_instances: 0,
+            instance_position_x: 0.0,
+            instance_position_y: 0.0,
+            instance_position_z: 0.0,
+            egui_state,
+            egui_renderer,
+            egui_frame_started: false,
         }
     }
 
@@ -454,13 +391,8 @@ impl State {
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
             self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
-            // self.camera.aspect = new_size.width as f32 / new_size.height as f32
         }
     }
-
-    // pub fn input(&mut self, event: &WindowEvent) -> bool {
-    //     self.controller.process_events(event)
-    // }
 
     // This is where we'll handle keyboard events
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
@@ -487,10 +419,6 @@ impl State {
         self.window.as_ref()
     }
 
-    // pub fn input(&mut self, event: &WindowEvent) -> bool {
-    //     self.controller.process_events(event)
-    // }
-
     pub fn update(&mut self) {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32();
@@ -505,18 +433,204 @@ impl State {
         let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
         self.light_uniform.position = (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(60.0 * dt)) * old_position).into();
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
-        // let now = std::time::Instant::now();
-        // let dt = now.duration_since(self.last_frame).as_secs_f32();
-        // self.last_frame = now;
+    }
 
-        // self.controller.update_camera(&mut self.camera, dt);
+    pub fn redraw_instances(&mut self, num_of_instances: u32, instance_position_x: f32, instance_position_y: f32, instance_position_z: f32, device: &wgpu::Device) -> (std::vec::Vec<Instance>, wgpu::Buffer) {
+        let num_instances = num_of_instances;
+        const SPACE_BETWEEN: f32 = 3.0;
 
-        // self.camera_uniform.update_view_proj(&self.camera, &self.projection);
-        // self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        let instances = (0..self.num_of_instances).flat_map(|z| {
+            (0..self.num_of_instances).map(move |x| {
+                let x = SPACE_BETWEEN * (x as f32 - num_instances as f32 / 2.0);
+                let z = SPACE_BETWEEN * (z as f32 - num_instances as f32 / 2.0);
+                let mut position = cgmath::Vector3 { x, y: 0.0, z };
+
+                let rotation = if num_instances == 1 {
+                    position = cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 };
+                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                } else if position.is_zero() {
+                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                } else {
+                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                };
+
+                Instance {
+                    initial_position: cgmath::Vector3 { x: instance_position_x, y: instance_position_y, z: instance_position_z },
+                    position,
+                    rotation,
+                }
+            })
+        }).collect::<Vec<_>>();
+
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+
+        let instance_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&instance_data),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+
+        (instances, instance_buffer)
+
+    }
+
+    fn egui_context(&self) -> Context {
+        self.egui_state.egui_ctx().clone()
+    }
+
+    pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) -> bool {
+        let response = self.egui_state.on_window_event(window, event);
+        response.consumed
+    }
+
+    pub fn ppp(&mut self, v: f32) {
+        self.egui_context().set_pixels_per_point(v);
+    }
+
+    pub fn begin_frame(&mut self, window: &Window) {
+        let raw_input = self.egui_state.take_egui_input(window);
+        self.egui_state.egui_ctx().begin_pass(raw_input);
+        self.egui_frame_started = true;
+    }
+
+    pub fn end_frame_and_draw(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        encoder: &mut CommandEncoder,
+        window: &Window,
+        window_surface_view: &TextureView,
+        screen_descriptor: ScreenDescriptor,
+    ) {
+        if !self.egui_frame_started {
+            panic!("begin_frame must be called before end_frame_and_draw can be called!");
+        }
+
+        self.ppp(screen_descriptor.pixels_per_point);
+
+        let full_output = self.egui_state.egui_ctx().end_pass();
+
+        self.egui_state
+            .handle_platform_output(window, full_output.platform_output);
+
+        let tris = self
+            .egui_state
+            .egui_ctx()
+            .tessellate(full_output.shapes, self.egui_state.egui_ctx().pixels_per_point());
+        for (id, image_delta) in &full_output.textures_delta.set {
+            self.egui_renderer
+                .update_texture(device, queue, *id, image_delta);
+        }
+        self.egui_renderer
+            .update_buffers(device, queue, encoder, &tris, &screen_descriptor);
+        let rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: window_surface_view,
+                resolve_target: None,
+                ops: egui_wgpu::wgpu::Operations {
+                    load: egui_wgpu::wgpu::LoadOp::Load,
+                    store: StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            label: Some("egui main render pass"),
+            occlusion_query_set: None,
+        });
+
+        self.egui_renderer
+            .render(&mut rpass.forget_lifetime(), &tris, &screen_descriptor);
+        for x in &full_output.textures_delta.free {
+            self.egui_renderer.free_texture(x)
+        }
+
+        self.egui_frame_started = false;
+    }
+
+    pub fn draw_overlay(&mut self) {
+        egui::TopBottomPanel::top("menu_bar").show(&self.egui_context(), |ui| {
+            if ui.button("Quit").clicked() {
+                std::process::exit(0);
+            }
+        });
+    }
+
+    pub fn draw_menu(&mut self, device: &wgpu::Device) {
+        egui::Window::new("winit + egui + wgpu says hello!")
+            .resizable(true)
+            .vscroll(true)
+            .default_open(false)
+            .show(&self.egui_context(), |ui| {
+                ui.label("Label!");
+
+                if ui.button("Button!").clicked() {
+                    println!("boom!")
+                }
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "# of Instances: {}",
+                        self.num_of_instances
+                    ));
+                    if ui.button("-").clicked() {
+                        if self.num_of_instances > 1 {
+                            self.num_of_instances -= 1;
+                            self.redraw_instances(self.num_of_instances, self.instance_position_x, self.instance_position_y, self.instance_position_z, &device);
+                        }
+                    }
+                    if ui.button("+").clicked() {
+                        self.num_of_instances += 1;
+                        self.redraw_instances(self.num_of_instances, self.instance_position_x, self.instance_position_y, self.instance_position_z, &device);
+                    }
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Instance X Position: {}",
+                        self.instance_position_x
+                    ));
+                    ui.add(egui::DragValue::new(&mut self.instance_position_x).speed(0.1));
+                    if ui.button("-").clicked() {
+                        self.instance_position_x -= 1.0;
+                    }
+                    if ui.button("+").clicked() {
+                        self.instance_position_x += 1.0;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Instance Y Position: {}",
+                        self.instance_position_y
+                    ));
+                    ui.add(egui::DragValue::new(&mut self.instance_position_y).speed(0.1));
+                    if ui.button("-").clicked() {
+                        self.instance_position_y -= 1.0;
+                    }
+                    if ui.button("+").clicked() {
+                        self.instance_position_y += 1.0;
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Instance Z Position: {}",
+                        self.instance_position_z
+                    ));
+                    ui.add(egui::DragValue::new(&mut self.instance_position_z).speed(0.1));
+                    if ui.button("-").clicked() {
+                        self.instance_position_z -= 1.0;
+                    }
+                    if ui.button("+").clicked() {
+                        self.instance_position_z += 1.0;
+                    }
+                })
+            });
     }
 
     // Render a single frame (clear screen to a color)
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self, window: Arc<Window>, device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(), wgpu::SurfaceError> {
         // self.window.request_redraw();
         // 1. Acquire next frame from surface
         // Refine error handling
@@ -532,6 +646,19 @@ impl State {
                     .device
                     .create_command_encoder(&wgpu::CommandEncoderDescriptor {label: Some("Render Encoder")});
 
+                // Screen descriptor for egui
+                let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                    size_in_pixels: [self.config.width, self.config.height],
+                    pixels_per_point: self.window.scale_factor() as f32 * self.scale_factor,
+                };
+                // Begin egui frame
+                self.begin_frame(&window);
+                // Build egui overlay UI
+                self.draw_overlay();
+                if self.show_menu {
+                    self.draw_menu(device);
+                }
+                
                 {
                     // 4. Begin render pass (define clear color + attachments)
                     let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -561,19 +688,31 @@ impl State {
                         occlusion_query_set: None,
                         timestamp_writes: None,
                     });
-                    render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-                    use crate::model::DrawLight;
-                    render_pass.set_pipeline(&self.light_render_pipeline);
-                    render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
+                    let num_of_instances = self.num_of_instances;
+                    if num_of_instances < 1 {
+                        render_pass.set_pipeline(&self.light_render_pipeline);
+                        render_pass.set_pipeline(&self.render_pipeline);
+                    } else {
+                        let (instances, instance_buffer) = self.redraw_instances(num_of_instances, self.instance_position_x, self.instance_position_y, self.instance_position_z, &device);
+                        render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+                        render_pass.set_pipeline(&self.light_render_pipeline);
+                        render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
 
-                    render_pass.set_pipeline(&self.render_pipeline);
-                    render_pass.draw_model_instanced(&self.obj_model, 0..self.instances.len() as u32, &self.camera_bind_group, &self.light_bind_group);
-                    // render_pass.draw_model_in(&self.obj_model, &self.camera_bind_group);
-
-                    // Bind camera once (group 1)
-                    // render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                        render_pass.set_pipeline(&self.render_pipeline);
+                        render_pass.draw_model_instanced(&self.obj_model, 0..instances.len() as u32, &self.camera_bind_group, &self.light_bind_group);
+                    }
+                    
                     // Render pass dropped here, finishing recording
                 }
+                // Render egui on top
+                self.end_frame_and_draw(
+                    &device,
+                    &queue,
+                    &mut encoder,
+                    &window,
+                    &view,
+                    screen_descriptor,
+                );
 
                 // 5. Submit recording command to GPU queue
                 self.queue.submit(std::iter::once(encoder.finish()));
